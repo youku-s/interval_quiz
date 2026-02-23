@@ -1,0 +1,428 @@
+---
+---
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>インターバル当てクイズ</title>
+    <style>
+      *, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0f172a;
+        --card-bg: #1e293b;
+        --border: #334155;
+        --text: #e2e8f0;
+        --text-dim: #94a3b8;
+        --accent: #3b82f6;
+        --accent-hover: #2563eb;
+        --success: #22c55e;
+        --success-bg: #14532d;
+        --error: #ef4444;
+        --error-bg: #7f1d1d;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Meiryo', sans-serif;
+        min-height: 100vh;
+        padding: 2rem 1rem;
+      }
+
+      main {
+        max-width: 680px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+      }
+
+      .score {
+        font-size: 0.95rem;
+        color: var(--text-dim);
+        text-align: right;
+      }
+
+      .score .score-value {
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: var(--text);
+      }
+
+      /* ── コントロールカード ── */
+      .quiz-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+      }
+
+      .settings-row {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+
+      .settings-row label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+        color: var(--text-dim);
+        white-space: nowrap;
+      }
+
+      select {
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 0.4rem;
+        padding: 0.35rem 0.6rem;
+        font-size: 0.9rem;
+        cursor: pointer;
+      }
+
+      select:focus {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 0.75rem;
+      }
+
+      button {
+        cursor: pointer;
+        border: none;
+        border-radius: 0.5rem;
+        font-size: 1rem;
+        padding: 0.625rem 1.25rem;
+        transition: background 0.15s, opacity 0.15s;
+        font-family: inherit;
+      }
+
+      button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .btn-primary {
+        background: var(--accent);
+        color: #fff;
+        font-weight: 600;
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        background: var(--accent-hover);
+      }
+
+      .btn-secondary {
+        background: var(--border);
+        color: var(--text);
+      }
+
+      .btn-secondary:hover:not(:disabled) {
+        background: #475569;
+      }
+
+      .status {
+        font-size: 1rem;
+        color: var(--text-dim);
+        text-align: center;
+        min-height: 1.4em;
+      }
+
+      .status.playing   { color: var(--accent); }
+      .status.listening { color: var(--text); }
+      .status.correct   { color: var(--success); }
+      .status.wrong     { color: var(--error); }
+
+      .feedback {
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        text-align: center;
+      }
+
+      .feedback.hidden  { display: none; }
+      .feedback.correct { background: var(--success-bg); color: var(--success); }
+      .feedback.wrong   { background: var(--error-bg);   color: var(--error); }
+
+      /* ── 回答ボタングリッド ── */
+      .answers-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.5rem;
+      }
+
+      @media (max-width: 480px) {
+        .answers-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      .answer-btn {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 0.75rem 0.5rem;
+        border-radius: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.2rem;
+        transition: background 0.12s, border-color 0.12s;
+      }
+
+      .answer-btn:hover:not(:disabled) {
+        background: #334155;
+        border-color: var(--accent);
+      }
+
+      .answer-btn .short-name {
+        font-size: 1.05rem;
+        font-weight: 700;
+        font-family: monospace;
+      }
+
+      .answer-btn .ja-name {
+        font-size: 0.68rem;
+        color: var(--text-dim);
+        text-align: center;
+      }
+
+      .answer-btn.correct {
+        background: var(--success-bg);
+        border-color: var(--success);
+        color: var(--success);
+      }
+
+      .answer-btn.correct .ja-name { color: var(--success); }
+
+      .answer-btn.wrong {
+        background: var(--error-bg);
+        border-color: var(--error);
+        color: var(--error);
+      }
+
+      .answer-btn.wrong .ja-name { color: var(--error); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>インターバル当てクイズ</h1>
+        <div class="score">
+          <span class="score-value"><span id="correct">0</span> / <span id="total">0</span></span><br />
+          正解
+        </div>
+      </header>
+
+      <section class="quiz-card">
+        <!-- 設定行 -->
+        <div class="settings-row">
+          <label>
+            ルート音
+            <select id="baseNoteSelect">
+              <!-- JS で生成 -->
+            </select>
+          </label>
+          <label>
+            再生方向
+            <select id="modeSelect">
+              <option value="ascending">上行（低→高）</option>
+              <option value="descending">下行（高→低）</option>
+              <option value="harmonic">和音（同時）</option>
+            </select>
+          </label>
+        </div>
+
+        <!-- 操作ボタン -->
+        <div class="controls">
+          <button id="playBtn" class="btn-primary">▶ 再生</button>
+          <button id="replayBtn" class="btn-secondary" disabled>↩ もう一度</button>
+        </div>
+
+        <p id="status" class="status">「再生」を押して問題を聞いてください</p>
+
+        <div id="feedback" class="feedback hidden"></div>
+      </section>
+
+      <div id="answers" class="answers-grid"></div>
+    </main>
+
+    <script>
+      import type { PlayMode } from "../lib/audio";
+      import { playInterval } from "../lib/audio";
+      import {
+        ALL_INTERVALS,
+        BASE_NOTE_OPTIONS,
+        type Interval,
+        pickRandom,
+        resolveBaseMidi,
+      } from "../lib/intervals";
+
+      // ── 状態 ──────────────────────────────────────
+      let currentInterval: Interval | null = null;
+      let currentBaseMidi = 60;
+      let isPlaying = false;
+      let answered = false;
+      let correct = 0;
+      let total = 0;
+
+      // ── DOM 参照 ──────────────────────────────────
+      const playBtn        = document.getElementById("playBtn")        as HTMLButtonElement;
+      const replayBtn      = document.getElementById("replayBtn")      as HTMLButtonElement;
+      const statusEl       = document.getElementById("status")         as HTMLParagraphElement;
+      const feedbackEl     = document.getElementById("feedback")       as HTMLDivElement;
+      const answersEl      = document.getElementById("answers")        as HTMLDivElement;
+      const correctEl      = document.getElementById("correct")        as HTMLSpanElement;
+      const totalEl        = document.getElementById("total")          as HTMLSpanElement;
+      const baseNoteSelect = document.getElementById("baseNoteSelect") as HTMLSelectElement;
+      const modeSelect     = document.getElementById("modeSelect")     as HTMLSelectElement;
+
+      // ── ルート音セレクト初期化 ─────────────────────
+      for (const opt of BASE_NOTE_OPTIONS) {
+        const el = document.createElement("option");
+        el.value = opt.midi === null ? "random" : String(opt.midi);
+        el.textContent = opt.label;
+        if (opt.midi === 60) el.selected = true; // デフォルト: C4
+        baseNoteSelect.appendChild(el);
+      }
+
+      // ── 回答ボタン生成 ─────────────────────────────
+      for (const interval of ALL_INTERVALS) {
+        const btn = document.createElement("button");
+        btn.className = "answer-btn";
+        btn.dataset.semitones = String(interval.semitones);
+        btn.innerHTML =
+          `<span class="short-name">${interval.shortName}</span>` +
+          `<span class="ja-name">${interval.jaName}</span>`;
+        btn.disabled = true;
+        btn.addEventListener("click", () => onAnswer(interval));
+        answersEl.appendChild(btn);
+      }
+
+      // ── ヘルパー ──────────────────────────────────
+      function setAnswerButtonsDisabled(disabled: boolean): void {
+        for (const btn of answersEl.querySelectorAll<HTMLButtonElement>(".answer-btn")) {
+          btn.disabled = disabled;
+        }
+      }
+
+      function resetAnswerButtons(): void {
+        for (const btn of answersEl.querySelectorAll<HTMLButtonElement>(".answer-btn")) {
+          btn.className = "answer-btn";
+        }
+      }
+
+      function getSelectedBaseMidi(): number {
+        const val = baseNoteSelect.value;
+        const midi = val === "random" ? null : Number(val);
+        return resolveBaseMidi(midi);
+      }
+
+      function getSelectedMode(): PlayMode {
+        return modeSelect.value as PlayMode;
+      }
+
+      // ── 再生処理 ──────────────────────────────────
+      async function play(interval: Interval, baseMidi: number): Promise<void> {
+        isPlaying = true;
+        playBtn.disabled = true;
+        replayBtn.disabled = true;
+        setAnswerButtonsDisabled(true);
+        statusEl.textContent = "再生中...";
+        statusEl.className = "status playing";
+
+        await playInterval(interval.semitones, baseMidi, getSelectedMode());
+
+        isPlaying = false;
+        statusEl.textContent = "何度のインターバルでしょう？";
+        statusEl.className = "status listening";
+        setAnswerButtonsDisabled(false);
+        replayBtn.disabled = false;
+      }
+
+      // ── 新しい問題 ────────────────────────────────
+      async function newQuestion(): Promise<void> {
+        answered = false;
+        feedbackEl.className = "feedback hidden";
+        resetAnswerButtons();
+
+        currentInterval = pickRandom(ALL_INTERVALS);
+        currentBaseMidi = getSelectedBaseMidi();
+
+        await play(currentInterval, currentBaseMidi);
+      }
+
+      // ── 回答処理 ──────────────────────────────────
+      function onAnswer(selected: Interval): void {
+        if (answered || isPlaying || !currentInterval) return;
+
+        answered = true;
+        total++;
+        setAnswerButtonsDisabled(true);
+        replayBtn.disabled = true;
+
+        const isCorrect = selected.semitones === currentInterval.semitones;
+        if (isCorrect) correct++;
+
+        correctEl.textContent = String(correct);
+        totalEl.textContent = String(total);
+
+        // ボタンの色付け
+        for (const btn of answersEl.querySelectorAll<HTMLButtonElement>(".answer-btn")) {
+          const s = Number(btn.dataset.semitones);
+          if (s === currentInterval!.semitones) {
+            btn.classList.add("correct");
+          } else if (s === selected.semitones && !isCorrect) {
+            btn.classList.add("wrong");
+          }
+        }
+
+        feedbackEl.className = `feedback ${isCorrect ? "correct" : "wrong"}`;
+        feedbackEl.textContent = isCorrect
+          ? `正解！ ${currentInterval.jaName}（${currentInterval.shortName}）`
+          : `不正解… 正解は ${currentInterval.jaName}（${currentInterval.shortName}）`;
+
+        statusEl.textContent = isCorrect ? "正解！" : "不正解…";
+        statusEl.className = `status ${isCorrect ? "correct" : "wrong"}`;
+        playBtn.disabled = false;
+      }
+
+      // ── イベントリスナー ──────────────────────────
+      playBtn.addEventListener("click", () => { if (!isPlaying) newQuestion(); });
+
+      replayBtn.addEventListener("click", () => {
+        if (isPlaying || !currentInterval) return;
+        answered = false;
+        feedbackEl.className = "feedback hidden";
+        resetAnswerButtons();
+        play(currentInterval, currentBaseMidi);
+      });
+    </script>
+  </body>
+</html>
