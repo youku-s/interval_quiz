@@ -1,0 +1,209 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="音程方向クイズ" activeTab="direction" mainGap="gap-3">
+  <header class="flex justify-between items-center">
+    <h1 class="text-xl font-bold">音程方向クイズ</h1>
+    <div class="text-sm text-slate-400 text-right leading-snug">
+      <span class="text-lg font-bold text-slate-200">
+        <span id="correct">0</span> / <span id="total">0</span>
+      </span><br />正解
+    </div>
+  </header>
+
+  <section class="bg-slate-800 border border-slate-700 rounded-xl p-3 flex flex-col gap-2">
+    <label class="flex items-center gap-2 text-sm text-slate-400">
+      ルート音
+      <select id="baseNoteSelect" class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-2 py-1 text-sm"></select>
+    </label>
+
+    <div class="flex gap-2">
+      <button id="playBtn" class="bg-blue-500 text-white font-semibold px-5 py-2 rounded-lg text-base transition-colors">▶ 再生</button>
+      <button id="replayBtn" class="bg-slate-700 text-slate-200 px-5 py-2 rounded-lg text-base transition-colors" disabled>↩ もう一度</button>
+    </div>
+
+    <p id="status" class="status text-sm text-slate-400 text-center">「再生」を押して問題を聞いてください</p>
+    <div id="feedback" class="feedback hidden"></div>
+  </section>
+
+  <div class="grid grid-cols-2 gap-2">
+    <div class="flex flex-col gap-1">
+      <div class="text-center text-xs font-bold text-slate-400 bg-slate-900 border border-slate-700 rounded py-1">↑ 上行</div>
+      <div id="up-answers"></div>
+    </div>
+    <div class="flex flex-col gap-1">
+      <div class="text-center text-xs font-bold text-slate-400 bg-slate-900 border border-slate-700 rounded py-1">↓ 下行</div>
+      <div id="down-answers"></div>
+    </div>
+  </div>
+</Layout>
+
+<style is:global>
+  .dir-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #e2e8f0;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.3rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    transition: background 0.12s, border-color 0.12s;
+    width: 100%;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .dir-btn:hover:not(:disabled) { background: #334155; border-color: #3b82f6; }
+  .dir-btn .arrow { font-size: 0.75rem; }
+  .dir-btn .semi  { font-size: 0.85rem; font-weight: 700; font-family: monospace; }
+  .dir-btn.correct { background: #052e16; border-color: #22c55e; color: #22c55e; }
+  .dir-btn.wrong   { background: #450a0a; border-color: #ef4444; color: #ef4444; }
+</style>
+
+<script>
+  import {
+    ALL_INTERVALS,
+    BASE_NOTE_OPTIONS,
+    type Interval,
+    pickRandom,
+    resolveBaseMidi,
+  } from '../lib/intervals';
+  import { playInterval } from '../lib/audio';
+
+  const QUIZ_INTERVALS = ALL_INTERVALS.filter(iv => iv.semitones > 0);
+
+  let currentSemitones = 0;
+  let currentBaseMidi  = 60;
+  let isPlaying  = false;
+  let answered   = false;
+  let correct    = 0;
+  let total      = 0;
+
+  const playBtn        = document.getElementById('playBtn')        as HTMLButtonElement;
+  const replayBtn      = document.getElementById('replayBtn')      as HTMLButtonElement;
+  const statusEl       = document.getElementById('status')         as HTMLParagraphElement;
+  const feedbackEl     = document.getElementById('feedback')       as HTMLDivElement;
+  const correctEl      = document.getElementById('correct')        as HTMLSpanElement;
+  const totalEl        = document.getElementById('total')          as HTMLSpanElement;
+  const baseNoteSelect = document.getElementById('baseNoteSelect') as HTMLSelectElement;
+  const upAnswers      = document.getElementById('up-answers')     as HTMLDivElement;
+  const downAnswers    = document.getElementById('down-answers')   as HTMLDivElement;
+
+  for (const opt of BASE_NOTE_OPTIONS) {
+    const el = document.createElement('option');
+    el.value = opt.midi === null ? 'random' : String(opt.midi);
+    el.textContent = opt.label;
+    if (opt.midi === 60) el.selected = true;
+    baseNoteSelect.appendChild(el);
+  }
+
+  function makeButtons(container: HTMLDivElement, sign: 1 | -1): void {
+    container.style.cssText = 'display:flex;flex-direction:column;gap:0.15rem';
+    for (const iv of QUIZ_INTERVALS) {
+      const signed = sign * iv.semitones;
+      const btn = document.createElement('button');
+      btn.className = 'dir-btn';
+      btn.dataset.semitones = String(signed);
+      btn.disabled = true;
+      btn.innerHTML =
+        `<span class="arrow">${sign === 1 ? '↑' : '↓'}</span>` +
+        `<span class="semi">${iv.semitones}</span>`;
+      btn.addEventListener('click', () => onAnswer(signed));
+      container.appendChild(btn);
+    }
+  }
+
+  makeButtons(upAnswers,   1);
+  makeButtons(downAnswers, -1);
+
+  function allButtons(): HTMLButtonElement[] {
+    return [
+      ...upAnswers.querySelectorAll<HTMLButtonElement>('.dir-btn'),
+      ...downAnswers.querySelectorAll<HTMLButtonElement>('.dir-btn'),
+    ];
+  }
+
+  function setAnswerButtonsDisabled(disabled: boolean): void {
+    for (const btn of allButtons()) btn.disabled = disabled;
+  }
+
+  function resetAnswerButtons(): void {
+    for (const btn of allButtons()) btn.className = 'dir-btn';
+  }
+
+  function getSelectedBaseMidi(): number {
+    const val = baseNoteSelect.value;
+    return resolveBaseMidi(val === 'random' ? null : Number(val));
+  }
+
+  async function play(semitones: number, baseMidi: number): Promise<void> {
+    isPlaying = true;
+    playBtn.disabled = true;
+    replayBtn.disabled = true;
+    setAnswerButtonsDisabled(true);
+    statusEl.textContent = '再生中...';
+    statusEl.className = 'status playing text-sm text-center';
+
+    await playInterval(semitones, baseMidi, 'ascending');
+
+    isPlaying = false;
+    statusEl.textContent = '上行？下行？セミトーン数は？';
+    statusEl.className = 'status listening text-sm text-center';
+    setAnswerButtonsDisabled(false);
+    replayBtn.disabled = false;
+  }
+
+  async function newQuestion(): Promise<void> {
+    answered = false;
+    feedbackEl.className = 'feedback hidden';
+    resetAnswerButtons();
+
+    const direction = Math.random() < 0.5 ? 1 : -1;
+    const iv: Interval = pickRandom(QUIZ_INTERVALS);
+    currentSemitones = direction * iv.semitones;
+    currentBaseMidi  = getSelectedBaseMidi();
+
+    await play(currentSemitones, currentBaseMidi);
+  }
+
+  function onAnswer(selected: number): void {
+    if (answered || isPlaying) return;
+
+    answered = true;
+    total++;
+    setAnswerButtonsDisabled(true);
+    replayBtn.disabled = true;
+
+    const isCorrect = selected === currentSemitones;
+    if (isCorrect) correct++;
+
+    correctEl.textContent = String(correct);
+    totalEl.textContent   = String(total);
+
+    for (const btn of allButtons()) {
+      const s = Number(btn.dataset.semitones);
+      if (s === currentSemitones)                 btn.classList.add('correct');
+      else if (s === selected && !isCorrect)       btn.classList.add('wrong');
+    }
+
+    const correctIv = QUIZ_INTERVALS.find(iv => iv.semitones === Math.abs(currentSemitones))!;
+    const dir = currentSemitones > 0 ? '↑ 上行' : '↓ 下行';
+    feedbackEl.className = `feedback ${isCorrect ? 'correct' : 'wrong'}`;
+    feedbackEl.textContent = isCorrect
+      ? `正解！ ${dir} ${correctIv.semitones}半音`
+      : `不正解… 正解は ${dir} ${correctIv.semitones}半音`;
+
+    statusEl.textContent = isCorrect ? '正解！' : '不正解…';
+    statusEl.className   = `status ${isCorrect ? 'correct' : 'wrong'} text-sm text-center`;
+    playBtn.disabled = false;
+  }
+
+  playBtn.addEventListener('click', () => { if (!isPlaying) newQuestion(); });
+  replayBtn.addEventListener('click', () => {
+    if (isPlaying) return;
+    answered = false;
+    feedbackEl.className = 'feedback hidden';
+    resetAnswerButtons();
+    play(currentSemitones, currentBaseMidi);
+  });
+</script>

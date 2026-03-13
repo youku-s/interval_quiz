@@ -1,0 +1,35 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  activeTab: 'index' | 'direction';
+  mainGap?: string;
+}
+
+const { title, activeTab, mainGap = 'gap-4' } = Astro.props;
+---
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body class="bg-slate-900 text-slate-200 min-h-svh" style="font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,sans-serif">
+    <nav class="flex border-b-2 border-slate-700 px-2">
+      <a href="/"
+        class={`py-3 px-3 text-sm font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap no-underline ${activeTab === 'index' ? 'text-blue-400 border-blue-400' : 'text-slate-400 border-transparent'}`}>
+        インターバルクイズ
+      </a>
+      <a href="/direction"
+        class={`py-3 px-3 text-sm font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap no-underline ${activeTab === 'direction' ? 'text-blue-400 border-blue-400' : 'text-slate-400 border-transparent'}`}>
+        音程方向クイズ
+      </a>
+    </nav>
+    <main class={`max-w-lg mx-auto px-3 py-4 flex flex-col ${mainGap}`}>
+      <slot />
+    </main>
+  </body>
+</html>
