@@ -1,7 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 ---
-<Layout title="音程方向クイズ" activeTab="direction" mainGap="gap-3">
+<Layout title="音程方向クイズ" activeTab="direction" mainGap="gap-3" wide>
   <header class="flex justify-between items-center">
     <h1 class="text-xl font-bold">音程方向クイズ</h1>
     <div class="text-sm text-slate-400 text-right leading-snug">
@@ -11,34 +11,65 @@ import Layout from '../layouts/Layout.astro';
     </div>
   </header>
 
-  <section class="bg-slate-800 border border-slate-700 rounded-xl p-3 flex flex-col gap-2">
-    <label class="flex items-center gap-2 text-sm text-slate-400">
-      ルート音
-      <select id="baseNoteSelect" class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-2 py-1 text-sm"></select>
-    </label>
+  <div class="flex gap-4 items-start">
+    <!-- 左カラム：クイズ + 回答ボタン -->
+    <div class="flex flex-col gap-3 shrink-0" style="width:268px">
+      <section class="bg-slate-800 border border-slate-700 rounded-xl p-3 flex flex-col gap-2">
+        <label class="flex items-center gap-2 text-sm text-slate-400">
+          ルート音
+          <select id="baseNoteSelect" class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-2 py-1 text-sm"></select>
+        </label>
 
-    <div class="flex gap-2">
-      <button id="playBtn" class="bg-blue-500 text-white font-semibold px-5 py-2 rounded-lg text-base transition-colors">▶ 再生</button>
-      <button id="replayBtn" class="bg-slate-700 text-slate-200 px-5 py-2 rounded-lg text-base transition-colors" disabled>↩ もう一度</button>
+        <div class="flex gap-2">
+          <button id="playBtn" class="bg-blue-500 text-white font-semibold px-5 py-2 rounded-lg text-base transition-colors">▶ 再生</button>
+          <button id="replayBtn" class="bg-slate-700 text-slate-200 px-5 py-2 rounded-lg text-base transition-colors" disabled>↩ もう一度</button>
+        </div>
+
+        <p id="status" class="status text-sm text-slate-400 text-center">「再生」を押して問題を聞いてください</p>
+      </section>
+
+      <div class="grid grid-cols-2 gap-2">
+        <div class="flex flex-col gap-1">
+          <div class="text-center text-xs font-bold text-slate-400 bg-slate-900 border border-slate-700 rounded py-1">↑ 上行</div>
+          <div id="up-answers"></div>
+        </div>
+        <div class="flex flex-col gap-1">
+          <div class="text-center text-xs font-bold text-slate-400 bg-slate-900 border border-slate-700 rounded py-1">↓ 下行</div>
+          <div id="down-answers"></div>
+        </div>
+      </div>
     </div>
 
-    <p id="status" class="status text-sm text-slate-400 text-center">「再生」を押して問題を聞いてください</p>
-    <div id="feedback" class="feedback hidden"></div>
-  </section>
+    <!-- 右カラム：履歴 + 成績 + 診断 -->
+    <div class="flex flex-col gap-3 flex-1 min-w-0">
+      <div class="grid grid-cols-2 gap-3">
 
-  <div class="grid grid-cols-2 gap-2">
-    <div class="flex flex-col gap-1">
-      <div class="text-center text-xs font-bold text-slate-400 bg-slate-900 border border-slate-700 rounded py-1">↑ 上行</div>
-      <div id="up-answers"></div>
-    </div>
-    <div class="flex flex-col gap-1">
-      <div class="text-center text-xs font-bold text-slate-400 bg-slate-900 border border-slate-700 rounded py-1">↓ 下行</div>
-      <div id="down-answers"></div>
+        <!-- 履歴 -->
+        <section class="bg-slate-800 border border-slate-700 rounded-xl p-3">
+          <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">履歴</h2>
+          <p id="history-empty" class="text-xs text-slate-500">回答するとここに記録されます</p>
+          <div id="history-list" class="flex flex-col gap-px"></div>
+        </section>
+
+        <!-- 音程別成績 -->
+        <section class="bg-slate-800 border border-slate-700 rounded-xl p-3">
+          <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">音程別成績</h2>
+          <div id="stats-table"></div>
+        </section>
+
+      </div>
+
+      <!-- 診断 -->
+      <section class="bg-slate-800 border border-slate-700 rounded-xl p-3">
+        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">診断</h2>
+        <p id="diagnosis" class="text-sm text-slate-500">5問以上回答すると傾向が表示されます</p>
+      </section>
     </div>
   </div>
 </Layout>
 
 <style is:global>
+  /* ---- 回答ボタン ---- */
   .dir-btn {
     background: #1e293b;
     border: 1px solid #334155;
@@ -56,8 +87,33 @@ import Layout from '../layouts/Layout.astro';
   .dir-btn:hover:not(:disabled) { background: #334155; border-color: #3b82f6; }
   .dir-btn .arrow { font-size: 0.75rem; }
   .dir-btn .semi  { font-size: 0.85rem; font-weight: 700; font-family: monospace; }
+  .dir-btn .note  { font-size: 0.75rem; color: #64748b; margin-left: auto; font-family: monospace; }
   .dir-btn.correct { background: #052e16; border-color: #22c55e; color: #22c55e; }
+  .dir-btn.correct .note { color: #16a34a; }
   .dir-btn.wrong   { background: #450a0a; border-color: #ef4444; color: #ef4444; }
+  .dir-btn.wrong .note { color: #b91c1c; }
+
+  /* ---- 履歴 ---- */
+  .h-entry { font-size: 0.8rem; color: #94a3b8; display: flex; align-items: center; gap: 0.3rem; padding: 0.1rem 0; }
+  .h-entry b { color: #e2e8f0; font-family: monospace; }
+  .h-entry .iname { color: #64748b; font-size: 0.75rem; }
+  .h-entry .mark-ok { color: #22c55e; }
+  .h-entry .mark-ng { color: #ef4444; }
+  .h-entry .ans-wrong { color: #64748b; font-size: 0.75rem; }
+
+  /* ---- 成績テーブル ---- */
+  .stats-tbl { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+  .stats-tbl th { color: #64748b; font-weight: 600; text-align: left; padding: 0.1rem 0.35rem 0.25rem; border-bottom: 1px solid #334155; font-size: 0.7rem; }
+  .stats-tbl td { padding: 0.1rem 0.35rem; color: #64748b; }
+  .stats-tbl .td-st { color: #e2e8f0; font-weight: 700; font-family: monospace; }
+  .stats-tbl .td-name { color: #475569; }
+  .stats-tbl tbody tr:hover { background: rgba(255,255,255,0.03); }
+  .stats-tbl .stat-good { color: #22c55e; }
+  .stats-tbl .stat-mid  { color: #e2e8f0; }
+  .stats-tbl .stat-bad  { color: #ef4444; }
+
+  /* ---- 診断 ---- */
+  .diag-line { margin: 0.2rem 0; color: #cbd5e1; font-size: 0.85rem; }
 </style>
 
 <script>
@@ -72,6 +128,15 @@ import Layout from '../layouts/Layout.astro';
 
   const QUIZ_INTERVALS = ALL_INTERVALS.filter(iv => iv.semitones > 0);
 
+  // ---- 音名変換 ----
+  const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  function midiToNoteName(midi: number): string {
+    const pc = ((midi % 12) + 12) % 12;
+    const octave = Math.floor(midi / 12) - 1;
+    return `${NOTE_NAMES[pc]}${octave}`;
+  }
+
+  // ---- クイズ状態 ----
   let currentSemitones = 0;
   let currentBaseMidi  = 60;
   let isPlaying  = false;
@@ -79,10 +144,18 @@ import Layout from '../layouts/Layout.astro';
   let correct    = 0;
   let total      = 0;
 
+  // ---- 解析状態（セッション中のみ） ----
+  type HistoryEntry = { correctSt: number; answeredSt: number; ok: boolean; baseMidi: number };
+  const history: HistoryEntry[] = [];
+  // signed semitone → { ok, total }
+  const statMap = new Map<number, { ok: number; total: number }>();
+  // "correctSt→answeredSt" → count
+  const confusions = new Map<string, number>();
+
+  // ---- DOM参照 ----
   const playBtn        = document.getElementById('playBtn')        as HTMLButtonElement;
   const replayBtn      = document.getElementById('replayBtn')      as HTMLButtonElement;
   const statusEl       = document.getElementById('status')         as HTMLParagraphElement;
-  const feedbackEl     = document.getElementById('feedback')       as HTMLDivElement;
   const correctEl      = document.getElementById('correct')        as HTMLSpanElement;
   const totalEl        = document.getElementById('total')          as HTMLSpanElement;
   const baseNoteSelect = document.getElementById('baseNoteSelect') as HTMLSelectElement;
@@ -97,6 +170,7 @@ import Layout from '../layouts/Layout.astro';
     baseNoteSelect.appendChild(el);
   }
 
+  // ---- 回答ボタン生成 ----
   function makeButtons(container: HTMLDivElement, sign: 1 | -1): void {
     container.style.cssText = 'display:flex;flex-direction:column;gap:0.15rem';
     for (const iv of QUIZ_INTERVALS) {
@@ -107,7 +181,8 @@ import Layout from '../layouts/Layout.astro';
       btn.disabled = true;
       btn.innerHTML =
         `<span class="arrow">${sign === 1 ? '↑' : '↓'}</span>` +
-        `<span class="semi">${iv.semitones}</span>`;
+        `<span class="semi">${iv.semitones}</span>` +
+        `<span class="note"></span>`;
       btn.addEventListener('click', () => onAnswer(signed));
       container.appendChild(btn);
     }
@@ -115,6 +190,14 @@ import Layout from '../layouts/Layout.astro';
 
   makeButtons(upAnswers,   1);
   makeButtons(downAnswers, -1);
+
+  function updateButtonNotes(baseMidi: number): void {
+    for (const btn of allButtons()) {
+      const signed = Number(btn.dataset.semitones);
+      const noteEl = btn.querySelector<HTMLSpanElement>('.note');
+      if (noteEl) noteEl.textContent = midiToNoteName(baseMidi + signed);
+    }
+  }
 
   function allButtons(): HTMLButtonElement[] {
     return [
@@ -136,6 +219,7 @@ import Layout from '../layouts/Layout.astro';
     return resolveBaseMidi(val === 'random' ? null : Number(val));
   }
 
+  // ---- 再生 ----
   async function play(semitones: number, baseMidi: number): Promise<void> {
     isPlaying = true;
     playBtn.disabled = true;
@@ -155,17 +239,18 @@ import Layout from '../layouts/Layout.astro';
 
   async function newQuestion(): Promise<void> {
     answered = false;
-    feedbackEl.className = 'feedback hidden';
     resetAnswerButtons();
 
     const direction = Math.random() < 0.5 ? 1 : -1;
     const iv: Interval = pickRandom(QUIZ_INTERVALS);
     currentSemitones = direction * iv.semitones;
     currentBaseMidi  = getSelectedBaseMidi();
+    updateButtonNotes(currentBaseMidi);
 
     await play(currentSemitones, currentBaseMidi);
   }
 
+  // ---- 解答 ----
   function onAnswer(selected: number): void {
     if (answered || isPlaying) return;
 
@@ -182,27 +267,150 @@ import Layout from '../layouts/Layout.astro';
 
     for (const btn of allButtons()) {
       const s = Number(btn.dataset.semitones);
-      if (s === currentSemitones)                 btn.classList.add('correct');
-      else if (s === selected && !isCorrect)       btn.classList.add('wrong');
+      if (s === currentSemitones)           btn.classList.add('correct');
+      else if (s === selected && !isCorrect) btn.classList.add('wrong');
     }
 
-    const correctIv = QUIZ_INTERVALS.find(iv => iv.semitones === Math.abs(currentSemitones))!;
-    const dir = currentSemitones > 0 ? '↑ 上行' : '↓ 下行';
-    feedbackEl.className = `feedback ${isCorrect ? 'correct' : 'wrong'}`;
-    feedbackEl.textContent = isCorrect
-      ? `正解！ ${dir} ${correctIv.semitones}半音`
-      : `不正解… 正解は ${dir} ${correctIv.semitones}半音`;
-
-    statusEl.textContent = isCorrect ? '正解！' : '不正解…';
-    statusEl.className   = `status ${isCorrect ? 'correct' : 'wrong'} text-sm text-center`;
+    statusEl.textContent = '「再生」を押して次の問題へ';
+    statusEl.className   = 'status text-sm text-slate-400 text-center';
     playBtn.disabled = false;
+
+    recordAnswer(currentSemitones, selected, isCorrect);
   }
+
+  // ---- 解析：記録 ----
+  function recordAnswer(correctSt: number, answeredSt: number, ok: boolean): void {
+    history.push({ correctSt, answeredSt, ok, baseMidi: currentBaseMidi });
+
+    const s = statMap.get(correctSt) ?? { ok: 0, total: 0 };
+    s.total++;
+    if (ok) s.ok++;
+    statMap.set(correctSt, s);
+
+    if (!ok) {
+      const key = `${correctSt}→${answeredSt}`;
+      confusions.set(key, (confusions.get(key) ?? 0) + 1);
+    }
+
+    renderHistory();
+    renderStats();
+    renderDiagnosis();
+  }
+
+  // ---- 解析：履歴レンダリング ----
+  function renderHistory(): void {
+    const emptyEl = document.getElementById('history-empty')!;
+    const listEl  = document.getElementById('history-list')!;
+
+    emptyEl.style.display = 'none';
+    const entries = history.slice(-30).reverse();
+    listEl.innerHTML = entries.map(e => {
+      const dir       = e.correctSt > 0 ? '↑' : '↓';
+      const abs       = Math.abs(e.correctSt);
+      const note      = midiToNoteName(e.baseMidi + e.correctSt);
+      if (e.ok) {
+        return `<div class="h-entry">${dir}<b>${abs}</b> <span class="iname">${note}</span> <span class="mark-ok">✓</span></div>`;
+      } else {
+        const adir = e.answeredSt > 0 ? '↑' : '↓';
+        const aabs = Math.abs(e.answeredSt);
+        const anote = midiToNoteName(e.baseMidi + e.answeredSt);
+        return `<div class="h-entry">${dir}<b>${abs}</b> <span class="iname">${note}</span> <span class="mark-ng">✗</span> <span class="ans-wrong">→ ${adir}${aabs} ${anote}</span></div>`;
+      }
+    }).join('');
+  }
+
+  // ---- 解析：成績テーブルレンダリング ----
+  function fmtStat(st: number): { text: string; cls: string } {
+    const s = statMap.get(st);
+    if (!s || s.total === 0) return { text: '−', cls: '' };
+    const pct = Math.round(s.ok / s.total * 100);
+    const cls = pct >= 70 ? 'stat-good' : pct < 50 ? 'stat-bad' : 'stat-mid';
+    return { text: `${s.ok}/${s.total} ${pct}%`, cls };
+  }
+
+  function renderStats(): void {
+    const tableEl = document.getElementById('stats-table')!;
+    const rows = QUIZ_INTERVALS.map(iv => {
+      const up = fmtStat(+iv.semitones);
+      const dn = fmtStat(-iv.semitones);
+      return `<tr>
+        <td class="td-st">${iv.semitones}</td>
+        <td class="td-name">${iv.shortName}</td>
+        <td class="${up.cls}">${up.text}</td>
+        <td class="${dn.cls}">${dn.text}</td>
+      </tr>`;
+    }).join('');
+
+    tableEl.innerHTML = `<table class="stats-tbl">
+      <thead><tr><th>St</th><th></th><th>↑ 上行</th><th>↓ 下行</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+
+  // ---- 解析：診断レンダリング ----
+  function renderDiagnosis(): void {
+    const diagEl = document.getElementById('diagnosis')!;
+    if (history.length < 5) return;
+
+    const lines: string[] = [];
+
+    // 方向別正解率
+    let upOk = 0, upTotal = 0, dnOk = 0, dnTotal = 0;
+    for (const iv of QUIZ_INTERVALS) {
+      const u = statMap.get(+iv.semitones);
+      const d = statMap.get(-iv.semitones);
+      if (u) { upOk += u.ok; upTotal += u.total; }
+      if (d) { dnOk += d.ok; dnTotal += d.total; }
+    }
+    if (upTotal >= 3 && dnTotal >= 3) {
+      const upPct = Math.round(upOk / upTotal * 100);
+      const dnPct = Math.round(dnOk / dnTotal * 100);
+      const diff = upPct - dnPct;
+      if (Math.abs(diff) >= 15) {
+        lines.push(diff > 0
+          ? `↑上行の方が得意です（上行 ${upPct}% / 下行 ${dnPct}%）`
+          : `↓下行の方が得意です（下行 ${dnPct}% / 上行 ${upPct}%）`);
+      } else {
+        lines.push(`上行・下行のバランスが良いです（上行 ${upPct}% / 下行 ${dnPct}%）`);
+      }
+    }
+
+    // 苦手・得意
+    const weak: string[] = [], strong: string[] = [];
+    for (const iv of QUIZ_INTERVALS) {
+      for (const [dirLabel, sign] of [['↑', 1], ['↓', -1]] as const) {
+        const s = statMap.get(sign * iv.semitones);
+        if (!s || s.total < 3) continue;
+        const pct = s.ok / s.total;
+        if (pct < 0.5)   weak.push(`${dirLabel}${iv.semitones}(${iv.shortName})`);
+        else if (pct === 1) strong.push(`${dirLabel}${iv.semitones}(${iv.shortName})`);
+      }
+    }
+    if (weak.length)   lines.push(`苦手: ${weak.join('、')}`);
+    if (strong.length) lines.push(`得意: ${strong.join('、')}`);
+
+    // 混同しやすい組み合わせ
+    const topConfusions = [...confusions.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2);
+    if (topConfusions.length) {
+      const parts = topConfusions.map(([key, n]) => {
+        const [c, a] = key.split('→').map(Number);
+        return `${c > 0 ? '↑' : '↓'}${Math.abs(c)}を${a > 0 ? '↑' : '↓'}${Math.abs(a)}と混同(${n}回)`;
+      });
+      lines.push(`混同: ${parts.join('、')}`);
+    }
+
+    diagEl.innerHTML = lines.map(l => `<p class="diag-line">・${l}</p>`).join('');
+  }
+
+  // ---- 初期表示 ----
+  renderStats();
 
   playBtn.addEventListener('click', () => { if (!isPlaying) newQuestion(); });
   replayBtn.addEventListener('click', () => {
     if (isPlaying) return;
     answered = false;
-    feedbackEl.className = 'feedback hidden';
     resetAnswerButtons();
     play(currentSemitones, currentBaseMidi);
   });

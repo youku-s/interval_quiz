@@ -5,9 +5,10 @@ interface Props {
   title: string;
   activeTab: 'index' | 'direction';
   mainGap?: string;
+  wide?: boolean;
 }
 
-const { title, activeTab, mainGap = 'gap-4' } = Astro.props;
+const { title, activeTab, mainGap = 'gap-4', wide = false } = Astro.props;
 ---
 <!doctype html>
 <html lang="ja">
@@ -28,7 +29,7 @@ const { title, activeTab, mainGap = 'gap-4' } = Astro.props;
         音程方向クイズ
       </a>
     </nav>
-    <main class={`max-w-lg mx-auto px-3 py-4 flex flex-col ${mainGap}`}>
+    <main class={`${wide ? 'max-w-4xl' : 'max-w-lg'} mx-auto px-3 py-4 flex flex-col ${mainGap}`}>
       <slot />
     </main>
   </body>
