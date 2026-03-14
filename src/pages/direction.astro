@@ -4,10 +4,20 @@ import Layout from '../layouts/Layout.astro';
 <Layout title="音程方向クイズ" activeTab="direction" mainGap="gap-3" wide>
   <header class="flex justify-between items-center">
     <h1 class="text-xl font-bold">音程方向クイズ</h1>
-    <div class="text-sm text-slate-400 text-right leading-snug">
-      <span class="text-lg font-bold text-slate-200">
-        <span id="correct">0</span> / <span id="total">0</span>
-      </span><br />正解
+    <div class="flex items-center gap-4">
+      <button id="copyBtn" disabled
+        class="text-xs bg-slate-700 text-slate-400 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-default">
+        📋 コピー
+      </button>
+      <button id="downloadBtn" disabled
+        class="text-xs bg-slate-700 text-slate-400 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-default">
+        ⬇ DL
+      </button>
+      <div class="text-sm text-slate-400 text-right leading-snug">
+        <span class="text-lg font-bold text-slate-200">
+          <span id="correct">0</span> / <span id="total">0</span>
+        </span><br />正解
+      </div>
     </div>
   </header>
 
@@ -18,6 +28,14 @@ import Layout from '../layouts/Layout.astro';
         <label class="flex items-center gap-2 text-sm text-slate-400">
           ルート音
           <select id="baseNoteSelect" class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-2 py-1 text-sm"></select>
+        </label>
+        <label class="flex items-center gap-2 text-sm text-slate-400">
+          方向
+          <select id="directionSelect" class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-2 py-1 text-sm">
+            <option value="random">ランダム</option>
+            <option value="up">上行のみ</option>
+            <option value="down">下行のみ</option>
+          </select>
         </label>
 
         <div class="flex gap-2">
@@ -40,16 +58,9 @@ import Layout from '../layouts/Layout.astro';
       </div>
     </div>
 
-    <!-- 右カラム：履歴 + 成績 + 診断 -->
+    <!-- 右カラム：成績 + 診断 -->
     <div class="flex flex-col gap-3 flex-1 min-w-0">
       <div class="grid grid-cols-2 gap-3">
-
-        <!-- 履歴 -->
-        <section class="bg-slate-800 border border-slate-700 rounded-xl p-3">
-          <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">履歴</h2>
-          <p id="history-empty" class="text-xs text-slate-500">回答するとここに記録されます</p>
-          <div id="history-list" class="flex flex-col gap-px"></div>
-        </section>
 
         <!-- 音程別成績 -->
         <section class="bg-slate-800 border border-slate-700 rounded-xl p-3">
@@ -57,15 +68,26 @@ import Layout from '../layouts/Layout.astro';
           <div id="stats-table"></div>
         </section>
 
-      </div>
+        <!-- 診断 -->
+        <section class="bg-slate-800 border border-slate-700 rounded-xl p-3">
+          <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">診断</h2>
+          <p id="diagnosis" class="text-sm text-slate-500">5問以上回答すると傾向が表示されます</p>
+        </section>
 
-      <!-- 診断 -->
-      <section class="bg-slate-800 border border-slate-700 rounded-xl p-3">
-        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">診断</h2>
-        <p id="diagnosis" class="text-sm text-slate-500">5問以上回答すると傾向が表示されます</p>
-      </section>
+      </div>
     </div>
   </div>
+
+  <!-- 推移グラフ（全幅） -->
+  <section class="bg-slate-800 border border-slate-700 rounded-xl p-3">
+    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">推移グラフ</h2>
+    <p id="chart-empty" class="text-xs text-slate-500">回答するとグラフが表示されます</p>
+    <canvas id="history-chart" width="600" height="180" style="display:none;width:100%;height:auto;border-radius:0.2rem"></canvas>
+    <div id="chart-legend" style="display:none" class="flex gap-3 mt-1.5 text-xs text-slate-500">
+      <span><span style="color:#16a34a">●</span> 正解</span>
+      <span><span style="color:#ef4444">●</span> 誤答</span>
+    </div>
+  </section>
 </Layout>
 
 <style is:global>
@@ -93,29 +115,6 @@ import Layout from '../layouts/Layout.astro';
   .dir-btn.wrong   { background: #450a0a; border-color: #ef4444; color: #ef4444; }
   .dir-btn.wrong .note { color: #b91c1c; }
 
-  /* ---- プレビューボタン ---- */
-  .preview-btn {
-    background: #0f172a;
-    border: 1px solid #1e293b;
-    color: #475569;
-    padding: 0.2rem 0.3rem;
-    border-radius: 0.3rem;
-    font-size: 0.7rem;
-    line-height: 1;
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: color 0.1s, border-color 0.1s;
-  }
-  .preview-btn:hover:not(:disabled) { color: #94a3b8; border-color: #334155; }
-  .preview-btn:disabled { opacity: 0.25; cursor: default; }
-
-  /* ---- 履歴 ---- */
-  .h-entry { font-size: 0.8rem; color: #94a3b8; display: flex; align-items: center; gap: 0.3rem; padding: 0.1rem 0; }
-  .h-entry b { color: #e2e8f0; font-family: monospace; }
-  .h-entry .iname { color: #64748b; font-size: 0.75rem; }
-  .h-entry .mark-ok { color: #22c55e; }
-  .h-entry .mark-ng { color: #ef4444; }
-  .h-entry .ans-wrong { color: #64748b; font-size: 0.75rem; }
 
   /* ---- 成績テーブル ---- */
   .stats-tbl { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
@@ -140,7 +139,7 @@ import Layout from '../layouts/Layout.astro';
     pickRandom,
     resolveBaseMidi,
   } from '../lib/intervals';
-  import { playInterval, playNote } from '../lib/audio';
+  import { playInterval } from '../lib/audio';
 
   const QUIZ_INTERVALS = ALL_INTERVALS.filter(iv => iv.semitones > 0);
 
@@ -174,7 +173,10 @@ import Layout from '../layouts/Layout.astro';
   const statusEl       = document.getElementById('status')         as HTMLParagraphElement;
   const correctEl      = document.getElementById('correct')        as HTMLSpanElement;
   const totalEl        = document.getElementById('total')          as HTMLSpanElement;
-  const baseNoteSelect = document.getElementById('baseNoteSelect') as HTMLSelectElement;
+  const copyBtn           = document.getElementById('copyBtn')           as HTMLButtonElement;
+  const downloadBtn       = document.getElementById('downloadBtn')       as HTMLButtonElement;
+  const baseNoteSelect    = document.getElementById('baseNoteSelect')    as HTMLSelectElement;
+  const directionSelect   = document.getElementById('directionSelect')   as HTMLSelectElement;
   const upAnswers      = document.getElementById('up-answers')     as HTMLDivElement;
   const downAnswers    = document.getElementById('down-answers')   as HTMLDivElement;
 
@@ -191,16 +193,6 @@ import Layout from '../layouts/Layout.astro';
     container.style.cssText = 'display:flex;flex-direction:column;gap:0.15rem';
     for (const iv of QUIZ_INTERVALS) {
       const signed = sign * iv.semitones;
-
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:0.15rem';
-
-      const previewBtn = document.createElement('button');
-      previewBtn.className = 'preview-btn';
-      previewBtn.textContent = '🔊';
-      previewBtn.title = `${sign === 1 ? '↑' : '↓'}${iv.semitones}半音を再生`;
-      previewBtn.addEventListener('click', () => onPreview(signed));
-
       const btn = document.createElement('button');
       btn.className = 'dir-btn';
       btn.dataset.semitones = String(signed);
@@ -210,10 +202,7 @@ import Layout from '../layouts/Layout.astro';
         `<span class="semi">${iv.semitones}</span>` +
         `<span class="note"></span>`;
       btn.addEventListener('click', () => onAnswer(signed));
-
-      row.appendChild(previewBtn);
-      row.appendChild(btn);
-      container.appendChild(row);
+      container.appendChild(btn);
     }
   }
 
@@ -228,21 +217,6 @@ import Layout from '../layouts/Layout.astro';
     }
   }
 
-  function allPreviewButtons(): HTMLButtonElement[] {
-    return [
-      ...upAnswers.querySelectorAll<HTMLButtonElement>('.preview-btn'),
-      ...downAnswers.querySelectorAll<HTMLButtonElement>('.preview-btn'),
-    ];
-  }
-
-  function setPreviewButtonsDisabled(disabled: boolean): void {
-    for (const btn of allPreviewButtons()) btn.disabled = disabled;
-  }
-
-  async function onPreview(signed: number): Promise<void> {
-    if (isPlaying) return;
-    await playNote(currentBaseMidi + signed);
-  }
 
   function allButtons(): HTMLButtonElement[] {
     return [
@@ -270,7 +244,6 @@ import Layout from '../layouts/Layout.astro';
     playBtn.disabled = true;
     replayBtn.disabled = true;
     setAnswerButtonsDisabled(true);
-    setPreviewButtonsDisabled(true);
     statusEl.textContent = '再生中...';
     statusEl.className = 'status playing text-sm text-center';
 
@@ -280,7 +253,6 @@ import Layout from '../layouts/Layout.astro';
     statusEl.textContent = '上行？下行？セミトーン数は？';
     statusEl.className = 'status listening text-sm text-center';
     setAnswerButtonsDisabled(false);
-    setPreviewButtonsDisabled(false);
     replayBtn.disabled = false;
   }
 
@@ -288,7 +260,8 @@ import Layout from '../layouts/Layout.astro';
     answered = false;
     resetAnswerButtons();
 
-    const direction = Math.random() < 0.5 ? 1 : -1;
+    const dirMode = directionSelect.value;
+    const direction: 1 | -1 = dirMode === 'up' ? 1 : dirMode === 'down' ? -1 : (Math.random() < 0.5 ? 1 : -1);
     const iv: Interval = pickRandom(QUIZ_INTERVALS);
     currentSemitones = direction * iv.semitones;
     currentBaseMidi  = getSelectedBaseMidi();
@@ -328,6 +301,7 @@ import Layout from '../layouts/Layout.astro';
   // ---- 解析：記録 ----
   function recordAnswer(correctSt: number, answeredSt: number, ok: boolean): void {
     history.push({ correctSt, answeredSt, ok, baseMidi: currentBaseMidi });
+    if (history.length === 1) { copyBtn.disabled = false; downloadBtn.disabled = false; }
 
     const s = statMap.get(correctSt) ?? { ok: 0, total: 0 };
     s.total++;
@@ -339,31 +313,76 @@ import Layout from '../layouts/Layout.astro';
       confusions.set(key, (confusions.get(key) ?? 0) + 1);
     }
 
-    renderHistory();
+    renderChart();
     renderStats();
     renderDiagnosis();
   }
 
-  // ---- 解析：履歴レンダリング ----
-  function renderHistory(): void {
-    const emptyEl = document.getElementById('history-empty')!;
-    const listEl  = document.getElementById('history-list')!;
+  // ---- 解析：推移グラフレンダリング ----
+  function renderChart(): void {
+    const emptyEl  = document.getElementById('chart-empty')  as HTMLElement;
+    const canvas   = document.getElementById('history-chart') as HTMLCanvasElement;
+    const legendEl = document.getElementById('chart-legend')  as HTMLElement;
 
-    emptyEl.style.display = 'none';
-    const entries = history.slice(-30).reverse();
-    listEl.innerHTML = entries.map(e => {
-      const dir       = e.correctSt > 0 ? '↑' : '↓';
-      const abs       = Math.abs(e.correctSt);
-      const note      = midiToNoteName(e.baseMidi + e.correctSt);
-      if (e.ok) {
-        return `<div class="h-entry">${dir}<b>${abs}</b> <span class="iname">${note}</span> <span class="mark-ok">✓</span></div>`;
-      } else {
-        const adir = e.answeredSt > 0 ? '↑' : '↓';
-        const aabs = Math.abs(e.answeredSt);
-        const anote = midiToNoteName(e.baseMidi + e.answeredSt);
-        return `<div class="h-entry">${dir}<b>${abs}</b> <span class="iname">${note}</span> <span class="mark-ng">✗</span> <span class="ans-wrong">→ ${adir}${aabs} ${anote}</span></div>`;
+    if (history.length === 0) return;
+    emptyEl.style.display  = 'none';
+    canvas.style.display   = 'block';
+    legendEl.style.display = 'flex';
+
+    const entries = history.slice(-20);
+    const n = entries.length;
+    const W = 600, H = 180;
+    const PAD = { t: 10, b: 18, l: 26, r: 6 };
+    const pw = W - PAD.l - PAD.r, ph = H - PAD.t - PAD.b;
+    const xOf = (i: number) => PAD.l + (n <= 1 ? pw / 2 : i / (n - 1) * pw);
+    const yOf = (st: number) => PAD.t + (1 - (st + 12) / 24) * ph;
+
+    const c = canvas.getContext('2d')!;
+    c.clearRect(0, 0, W, H);
+
+    // グリッド線
+    for (const st of [-12, -6, 0, 6, 12]) {
+      c.strokeStyle = st === 0 ? '#334155' : '#1e293b';
+      c.lineWidth   = st === 0 ? 1 : 0.5;
+      if (st === 0) c.setLineDash([4, 4]);
+      c.beginPath(); c.moveTo(PAD.l, yOf(st)); c.lineTo(W - PAD.r, yOf(st)); c.stroke();
+      c.setLineDash([]);
+    }
+
+    // Y軸ラベル
+    c.fillStyle = '#475569'; c.font = '9px monospace';
+    c.textAlign = 'right'; c.textBaseline = 'middle';
+    for (const [st, lbl] of [[-12,'-12'],[-6,'-6'],[0,'0'],[6,'+6'],[12,'+12']] as [number,string][]) {
+      c.fillText(lbl, PAD.l - 3, yOf(st));
+    }
+
+    // 正解の折れ線
+    if (n >= 2) {
+      c.strokeStyle = '#16a34a'; c.lineWidth = 1.5;
+      c.beginPath();
+      entries.forEach((e, i) => { i === 0 ? c.moveTo(xOf(i), yOf(e.correctSt)) : c.lineTo(xOf(i), yOf(e.correctSt)); });
+      c.stroke();
+    }
+
+    // 誤答の縦の差分線
+    entries.forEach((e, i) => {
+      if (!e.ok) {
+        c.strokeStyle = '#4b5563'; c.lineWidth = 1; c.setLineDash([2, 2]);
+        c.beginPath(); c.moveTo(xOf(i), yOf(e.correctSt)); c.lineTo(xOf(i), yOf(e.answeredSt)); c.stroke();
+        c.setLineDash([]);
       }
-    }).join('');
+    });
+
+    // ドット
+    entries.forEach((e, i) => {
+      const x = xOf(i);
+      c.fillStyle = '#16a34a';
+      c.beginPath(); c.arc(x, yOf(e.correctSt), 3, 0, Math.PI * 2); c.fill();
+      if (!e.ok) {
+        c.fillStyle = '#ef4444';
+        c.beginPath(); c.arc(x, yOf(e.answeredSt), 3, 0, Math.PI * 2); c.fill();
+      }
+    });
   }
 
   // ---- 解析：成績テーブルレンダリング ----
@@ -450,6 +469,87 @@ import Layout from '../layouts/Layout.astro';
 
     diagEl.innerHTML = lines.map(l => `<p class="diag-line">・${l}</p>`).join('');
   }
+
+  // ---- エクスポート ----
+  function fmtStatMd(st: number): string {
+    const s = statMap.get(st);
+    if (!s || s.total === 0) return '−';
+    return `${s.ok}/${s.total} (${Math.round(s.ok / s.total * 100)}%)`;
+  }
+
+  function generateMarkdown(): string {
+    const lines: string[] = [];
+    const pct = total > 0 ? Math.round(correct / total * 100) : 0;
+    const now = new Date().toLocaleString('ja-JP');
+
+    lines.push('# 音程方向クイズ 結果レポート');
+    lines.push(`> エクスポート日時: ${now}`);
+    lines.push('');
+    lines.push('## 概要');
+    lines.push(`- 正解率: **${correct} / ${total} (${pct}%)**`);
+    lines.push(`- 方向設定: ${directionSelect.options[directionSelect.selectedIndex].text}`);
+    lines.push(`- ルート音: ${baseNoteSelect.options[baseNoteSelect.selectedIndex].text}`);
+    lines.push('');
+
+    lines.push('## 音程別成績');
+    lines.push('| 半音 | 音程名 | ↑ 上行 | ↓ 下行 |');
+    lines.push('|:----:|--------|--------|--------|');
+    for (const iv of QUIZ_INTERVALS) {
+      lines.push(`| ${iv.semitones} | ${iv.shortName} (${iv.jaName}) | ${fmtStatMd(+iv.semitones)} | ${fmtStatMd(-iv.semitones)} |`);
+    }
+    lines.push('');
+
+    if (history.length > 0) {
+      lines.push('## 回答履歴');
+      lines.push('| # | 正解 | 正解音 | 正誤 | 回答 |');
+      lines.push('|--:|------|--------|:----:|------|');
+      history.forEach((e, i) => {
+        const dir  = e.correctSt > 0 ? '↑' : '↓';
+        const abs  = Math.abs(e.correctSt);
+        const iv   = QUIZ_INTERVALS.find(v => v.semitones === abs)!;
+        const note = midiToNoteName(e.baseMidi + e.correctSt);
+        const ans  = e.ok ? '−' : (() => {
+          const adir  = e.answeredSt > 0 ? '↑' : '↓';
+          const aabs  = Math.abs(e.answeredSt);
+          const anote = midiToNoteName(e.baseMidi + e.answeredSt);
+          return `${adir}${aabs} ${anote}`;
+        })();
+        lines.push(`| ${i + 1} | ${dir}${abs} ${iv.shortName} | ${note} | ${e.ok ? '✓' : '✗'} | ${ans} |`);
+      });
+      lines.push('');
+    }
+
+    const diagEl = document.getElementById('diagnosis')!;
+    const diagLines = [...diagEl.querySelectorAll('.diag-line')].map(el => el.textContent ?? '');
+    if (diagLines.length > 0) {
+      lines.push('## 診断');
+      diagLines.forEach(l => lines.push(l));
+      lines.push('');
+    }
+
+    return lines.join('\n');
+  }
+
+  copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(generateMarkdown());
+      copyBtn.textContent = '✓ コピー完了';
+      setTimeout(() => { copyBtn.textContent = '📋 コピー'; }, 2000);
+    } catch {
+      copyBtn.textContent = '✗ 失敗';
+      setTimeout(() => { copyBtn.textContent = '📋 コピー'; }, 2000);
+    }
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    const blob = new Blob([generateMarkdown()], { type: 'text/markdown;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `interval-quiz-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
 
   // ---- 初期表示 ----
   renderStats();
