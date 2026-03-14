@@ -32,6 +32,13 @@ import Layout from '../layouts/Layout.astro';
             <option value="down">下行のみ</option>
           </select>
         </label>
+        <label class="flex items-center gap-2 text-sm text-slate-400">
+          範囲
+          <span class="text-xs text-slate-500">0 〜</span>
+          <input id="rangeMax" type="number" min="1" max="12" value="12"
+            class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-1.5 py-1 text-sm w-12 text-center">
+          <span class="text-xs text-slate-500">st</span>
+        </label>
 
         <div class="flex gap-2">
           <button id="playBtn" class="bg-blue-500 text-white font-semibold px-5 py-2 rounded-lg text-base transition-colors">▶ 再生</button>
@@ -43,14 +50,15 @@ import Layout from '../layouts/Layout.astro';
 
       <div class="grid grid-cols-2 gap-2">
         <div class="flex flex-col gap-1">
-          <div class="text-center text-xs font-bold text-slate-400 bg-slate-900 border border-slate-700 rounded py-1">↑ 上行</div>
+          <div id="up-header" class="text-center text-xs font-bold text-slate-400 bg-slate-900 border border-slate-700 rounded py-1 transition-opacity">↑ 上行</div>
           <div id="up-answers"></div>
         </div>
         <div class="flex flex-col gap-1">
-          <div class="text-center text-xs font-bold text-slate-400 bg-slate-900 border border-slate-700 rounded py-1">↓ 下行</div>
+          <div id="down-header" class="text-center text-xs font-bold text-slate-400 bg-slate-900 border border-slate-700 rounded py-1 transition-opacity">↓ 下行</div>
           <div id="down-answers"></div>
         </div>
       </div>
+      <div id="unison-answer" class="mt-1"></div>
     </div>
 
     <!-- 右カラム：成績 + 診断 -->
@@ -129,6 +137,14 @@ import Layout from '../layouts/Layout.astro';
   .dir-btn.correct .note { color: #16a34a; }
   .dir-btn.wrong   { background: #450a0a; border-color: #ef4444; color: #ef4444; }
   .dir-btn.wrong .note { color: #b91c1c; }
+  .dir-btn.out-of-play {
+    opacity: 0.2;
+    background: #0f172a;
+    border-color: #1e293b;
+    color: #1e293b;
+    cursor: not-allowed;
+  }
+  .dir-btn.out-of-play .note { color: #1e293b; }
 
 
   /* ---- 成績テーブル ---- */
@@ -156,7 +172,8 @@ import Layout from '../layouts/Layout.astro';
   } from '../lib/intervals';
   import { playInterval } from '../lib/audio';
 
-  const QUIZ_INTERVALS = ALL_INTERVALS.filter(iv => iv.semitones > 0);
+  const QUIZ_INTERVALS = ALL_INTERVALS.filter(iv => iv.semitones > 0);  // 1〜12
+  const UNISON_IV      = ALL_INTERVALS.find(iv => iv.semitones === 0)!; // 同音
 
   // ---- 音名変換 ----
   const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -176,7 +193,7 @@ import Layout from '../layouts/Layout.astro';
 
   // ---- localStorage スキーマ ----
   interface QuizRecord {
-    schemaVersion: 1;
+    schemaVersion: 2;
     id: string;
     sessionId: string;
     playedAt: number;       // 初回再生 epoch ms
@@ -187,6 +204,8 @@ import Layout from '../layouts/Layout.astro';
     baseMidi: number;
     baseNote: string;       // ルート音名 e.g. "C4"
     directionMode: string;  // "random" | "up" | "down"
+    rangeMin: number;       // 出題範囲 最小 semitone
+    rangeMax: number;       // 出題範囲 最大 semitone
     correctSt: number;
     answeredSt: number;
     ok: boolean;
@@ -195,7 +214,12 @@ import Layout from '../layouts/Layout.astro';
   const sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   function loadRecords(): QuizRecord[] {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]'); } catch { return []; }
+    try {
+      const raw: any[] = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
+      return raw.map(r => r.schemaVersion === 1
+        ? { ...r, schemaVersion: 2, rangeMin: 0, rangeMax: 12 } as QuizRecord
+        : r as QuizRecord);
+    } catch { return []; }
   }
   function saveRecord(rec: QuizRecord): void {
     const all = loadRecords();
@@ -204,17 +228,27 @@ import Layout from '../layouts/Layout.astro';
   }
 
   // ---- 解析状態（セッション中のみ） ----
-  type HistoryEntry = { correctSt: number; answeredSt: number; ok: boolean; baseMidi: number };
+  type HistoryEntry = {
+    correctSt: number; answeredSt: number; ok: boolean;
+    baseMidi: number; directionMode: string; rangeMax: number;
+  };
   const history: HistoryEntry[] = [];
   // signed semitone → { ok, total }
   const statMap = new Map<number, { ok: number; total: number }>();
   // "correctSt→answeredSt" → count
   const confusions = new Map<string, number>();
 
+  // ---- 出題範囲（rangeMin は常に 0 = 同音込み） ----
+  const rangeMin = 0;
+  let rangeMax = 12;
+
   // ---- タイミング追跡 ----
-  let currentPlayedAt    = 0;
+  let currentPlayedAt     = 0;
   let currentLastPlayedAt = 0;
-  let currentReplayCount = 0;
+  let currentReplayCount  = 0;
+
+  // ---- 回答ボタン有効状態 ----
+  let answersEnabled = false;
 
   // ---- DOM参照 ----
   const playBtn        = document.getElementById('playBtn')        as HTMLButtonElement;
@@ -229,6 +263,10 @@ import Layout from '../layouts/Layout.astro';
   const directionSelect   = document.getElementById('directionSelect')   as HTMLSelectElement;
   const upAnswers      = document.getElementById('up-answers')     as HTMLDivElement;
   const downAnswers    = document.getElementById('down-answers')   as HTMLDivElement;
+  const unisonAnswer   = document.getElementById('unison-answer')  as HTMLDivElement;
+  const upHeader       = document.getElementById('up-header')      as HTMLDivElement;
+  const downHeader     = document.getElementById('down-header')    as HTMLDivElement;
+  const rangeMaxInput  = document.getElementById('rangeMax')       as HTMLInputElement;
 
   for (const opt of BASE_NOTE_OPTIONS) {
     const el = document.createElement('option');
@@ -259,6 +297,30 @@ import Layout from '../layouts/Layout.astro';
   makeButtons(upAnswers,   1);
   makeButtons(downAnswers, -1);
 
+  // 同音ボタン（方向なし）
+  function makeUnisonButton(): void {
+    unisonAnswer.style.cssText = 'display:flex;justify-content:center';
+    const btn = document.createElement('button');
+    btn.className = 'dir-btn';
+    btn.dataset.semitones = '0';
+    btn.disabled = true;
+    btn.style.cssText = 'width:100%';
+    btn.innerHTML =
+      `<span class="arrow">→</span>` +
+      `<span class="semi">0</span>` +
+      `<span style="font-size:0.75rem;color:#64748b;margin-left:0.3rem">P1</span>` +
+      `<span class="note"></span>`;
+    btn.addEventListener('click', () => onAnswer(0));
+    unisonAnswer.appendChild(btn);
+  }
+  makeUnisonButton();
+
+  // ---- 出題範囲フィルタ ----
+  function getActiveIntervals(): typeof QUIZ_INTERVALS[0][] {
+    const ranged = QUIZ_INTERVALS.filter(iv => iv.semitones >= rangeMin && iv.semitones <= rangeMax);
+    return [UNISON_IV, ...ranged];
+  }
+
   function updateButtonNotes(baseMidi: number): void {
     for (const btn of allButtons()) {
       const signed = Number(btn.dataset.semitones);
@@ -272,15 +334,48 @@ import Layout from '../layouts/Layout.astro';
     return [
       ...upAnswers.querySelectorAll<HTMLButtonElement>('.dir-btn'),
       ...downAnswers.querySelectorAll<HTMLButtonElement>('.dir-btn'),
+      ...unisonAnswer.querySelectorAll<HTMLButtonElement>('.dir-btn'),
     ];
   }
 
+  function isButtonConstrained(btn: HTMLButtonElement): boolean {
+    const signed = Number(btn.dataset.semitones);
+    if (signed === 0) return false; // 同音は常に有効
+    const abs = Math.abs(signed);
+    const dirMode = directionSelect.value;
+    const inRange = abs >= rangeMin && abs <= rangeMax;
+    const dirOk   = dirMode === 'random'
+      || (dirMode === 'up'   && signed > 0)
+      || (dirMode === 'down' && signed < 0);
+    return !inRange || !dirOk;
+  }
+
+  function applyButtonDisabledState(): void {
+    for (const btn of allButtons()) {
+      btn.disabled = !answersEnabled || isButtonConstrained(btn);
+    }
+  }
+
   function setAnswerButtonsDisabled(disabled: boolean): void {
-    for (const btn of allButtons()) btn.disabled = disabled;
+    answersEnabled = !disabled;
+    applyButtonDisabledState();
+  }
+
+  function updateButtonConstraints(): void {
+    for (const btn of allButtons()) {
+      btn.classList.toggle('out-of-play', isButtonConstrained(btn));
+    }
+    applyButtonDisabledState();
+    const dirMode = directionSelect.value;
+    upHeader.classList.toggle('opacity-25', dirMode === 'down');
+    downHeader.classList.toggle('opacity-25', dirMode === 'up');
   }
 
   function resetAnswerButtons(): void {
-    for (const btn of allButtons()) btn.className = 'dir-btn';
+    for (const btn of allButtons()) {
+      btn.className = 'dir-btn';
+      btn.classList.toggle('out-of-play', isButtonConstrained(btn));
+    }
   }
 
   function getSelectedBaseMidi(): number {
@@ -314,9 +409,13 @@ import Layout from '../layouts/Layout.astro';
     currentReplayCount = 0;
 
     const dirMode = directionSelect.value;
-    const direction: 1 | -1 = dirMode === 'up' ? 1 : dirMode === 'down' ? -1 : (Math.random() < 0.5 ? 1 : -1);
-    const iv: Interval = pickRandom(QUIZ_INTERVALS);
-    currentSemitones = direction * iv.semitones;
+    const iv: Interval = pickRandom(getActiveIntervals());
+    if (iv.semitones === 0) {
+      currentSemitones = 0;
+    } else {
+      const direction: 1 | -1 = dirMode === 'up' ? 1 : dirMode === 'down' ? -1 : (Math.random() < 0.5 ? 1 : -1);
+      currentSemitones = direction * iv.semitones;
+    }
     currentBaseMidi  = getSelectedBaseMidi();
     updateButtonNotes(currentBaseMidi);
 
@@ -353,12 +452,12 @@ import Layout from '../layouts/Layout.astro';
 
   // ---- 解析：記録 ----
   function recordAnswer(correctSt: number, answeredSt: number, ok: boolean): void {
-    history.push({ correctSt, answeredSt, ok, baseMidi: currentBaseMidi });
+    history.push({ correctSt, answeredSt, ok, baseMidi: currentBaseMidi, directionMode: directionSelect.value, rangeMax });
     if (history.length === 1) { copyBtn.disabled = false; downloadBtn.disabled = false; }
 
     const answeredAt = Date.now();
     saveRecord({
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: answeredAt.toString(36) + Math.random().toString(36).slice(2, 6),
       sessionId,
       playedAt: currentPlayedAt,
@@ -369,6 +468,8 @@ import Layout from '../layouts/Layout.astro';
       baseMidi: currentBaseMidi,
       baseNote: midiToNoteName(currentBaseMidi),
       directionMode: directionSelect.value,
+      rangeMin,
+      rangeMax,
       correctSt,
       answeredSt,
       ok,
@@ -478,9 +579,15 @@ import Layout from '../layouts/Layout.astro';
       </tr>`;
     }).join('');
 
+    const uniStat = fmtStat(0);
+    const uniRow = `<tr>
+      <td class="td-st">0</td>
+      <td class="td-name" colspan="2">P1 同音</td>
+      <td class="${uniStat.cls}">${uniStat.text}</td>
+    </tr>`;
     tableEl.innerHTML = `<table class="stats-tbl">
       <thead><tr><th>St</th><th></th><th>↑ 上行</th><th>↓ 下行</th></tr></thead>
-      <tbody>${rows}</tbody>
+      <tbody>${uniRow}${rows}</tbody>
     </table>`;
   }
 
@@ -558,34 +665,35 @@ import Layout from '../layouts/Layout.astro';
     lines.push('');
     lines.push('## 概要');
     lines.push(`- 正解率: **${correct} / ${total} (${pct}%)**`);
-    lines.push(`- 方向設定: ${directionSelect.options[directionSelect.selectedIndex].text}`);
-    lines.push(`- ルート音: ${baseNoteSelect.options[baseNoteSelect.selectedIndex].text}`);
     lines.push('');
 
     lines.push('## 音程別成績');
     lines.push('| 半音 | 音程名 | ↑ 上行 | ↓ 下行 |');
     lines.push('|:----:|--------|--------|--------|');
+    lines.push(`| 0 | P1 同音 | ${fmtStatMd(0)} | − |`);
     for (const iv of QUIZ_INTERVALS) {
       lines.push(`| ${iv.semitones} | ${iv.shortName} (${iv.jaName}) | ${fmtStatMd(+iv.semitones)} | ${fmtStatMd(-iv.semitones)} |`);
     }
     lines.push('');
 
     if (history.length > 0) {
+      const dirLabel = (mode: string) =>
+        mode === 'up' ? '上行のみ' : mode === 'down' ? '下行のみ' : 'ランダム';
       lines.push('## 回答履歴');
-      lines.push('| # | 正解 | 正解音 | 正誤 | 回答 |');
-      lines.push('|--:|------|--------|:----:|------|');
+      lines.push('| # | ルート音 | 範囲 | 方向設定 | 正解 | 正解音 | 正誤 | 回答 |');
+      lines.push('|--:|--------|------|---------|------|--------|:----:|------|');
       history.forEach((e, i) => {
-        const dir  = e.correctSt > 0 ? '↑' : '↓';
         const abs  = Math.abs(e.correctSt);
-        const iv   = QUIZ_INTERVALS.find(v => v.semitones === abs)!;
+        const dir  = e.correctSt > 0 ? '↑' : e.correctSt < 0 ? '↓' : '→';
+        const iv   = ALL_INTERVALS.find(v => v.semitones === abs) ?? UNISON_IV;
         const note = midiToNoteName(e.baseMidi + e.correctSt);
         const ans  = e.ok ? '−' : (() => {
-          const adir  = e.answeredSt > 0 ? '↑' : '↓';
           const aabs  = Math.abs(e.answeredSt);
+          const adir  = e.answeredSt > 0 ? '↑' : e.answeredSt < 0 ? '↓' : '→';
           const anote = midiToNoteName(e.baseMidi + e.answeredSt);
           return `${adir}${aabs} ${anote}`;
         })();
-        lines.push(`| ${i + 1} | ${dir}${abs} ${iv.shortName} | ${note} | ${e.ok ? '✓' : '✗'} | ${ans} |`);
+        lines.push(`| ${i + 1} | ${midiToNoteName(e.baseMidi)} | 0〜${e.rangeMax} | ${dirLabel(e.directionMode)} | ${dir}${abs} ${iv.shortName} | ${note} | ${e.ok ? '✓' : '✗'} | ${ans} |`);
       });
       lines.push('');
     }
@@ -605,10 +713,10 @@ import Layout from '../layouts/Layout.astro';
     try {
       await navigator.clipboard.writeText(generateMarkdown());
       copyBtn.textContent = '✓ コピー完了';
-      setTimeout(() => { copyBtn.textContent = '📋 コピー'; }, 2000);
+      setTimeout(() => { copyBtn.textContent = '📋 MD コピー'; }, 2000);
     } catch {
       copyBtn.textContent = '✗ 失敗';
-      setTimeout(() => { copyBtn.textContent = '📋 コピー'; }, 2000);
+      setTimeout(() => { copyBtn.textContent = '📋 MD コピー'; }, 2000);
     }
   });
 
@@ -624,10 +732,11 @@ import Layout from '../layouts/Layout.astro';
 
   // ---- CSV エクスポート ----
   function generateCsv(): string {
-    const header = 'id,sessionId,playedAt,lastPlayedAt,answeredAt,responseTimeMs,replayCount,baseMidi,baseNote,directionMode,correctSt,answeredSt,ok';
+    const header = 'id,sessionId,playedAt,lastPlayedAt,answeredAt,responseTimeMs,replayCount,baseMidi,baseNote,directionMode,rangeMin,rangeMax,correctSt,answeredSt,ok';
     const rows = loadRecords().map(r =>
       [r.id, r.sessionId, r.playedAt, r.lastPlayedAt, r.answeredAt, r.responseTimeMs,
-       r.replayCount, r.baseMidi, `"${r.baseNote}"`, r.directionMode, r.correctSt, r.answeredSt, r.ok].join(',')
+       r.replayCount, r.baseMidi, `"${r.baseNote}"`, r.directionMode,
+       r.rangeMin, r.rangeMax, r.correctSt, r.answeredSt, r.ok].join(',')
     );
     return [header, ...rows].join('\n');
   }
@@ -644,6 +753,7 @@ import Layout from '../layouts/Layout.astro';
 
   // ---- 初期表示 ----
   renderStats();
+  updateButtonConstraints();
 
   playBtn.addEventListener('click', () => { if (!isPlaying) newQuestion(); });
   replayBtn.addEventListener('click', () => {
@@ -653,4 +763,13 @@ import Layout from '../layouts/Layout.astro';
     resetAnswerButtons();
     play(currentSemitones, currentBaseMidi);
   });
+
+  directionSelect.addEventListener('change', updateButtonConstraints);
+
+  function onRangeChange(): void {
+    rangeMax = Math.max(1, Math.min(12, Number(rangeMaxInput.value) || 12));
+    rangeMaxInput.value = String(rangeMax);
+    updateButtonConstraints();
+  }
+  rangeMaxInput.addEventListener('change', onRangeChange);
 </script>
