@@ -35,6 +35,14 @@ function wait(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+export async function playNote(midi: number): Promise<void> {
+  const ctx = new AudioContext();
+  const noteDur = 0.75;
+  scheduleNote(ctx, midiToFreq(midi), ctx.currentTime, noteDur);
+  await wait((noteDur + 0.1) * 1000);
+  await ctx.close();
+}
+
 export async function playInterval(
   semitones: number,
   baseMidi: number,

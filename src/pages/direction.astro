@@ -93,6 +93,22 @@ import Layout from '../layouts/Layout.astro';
   .dir-btn.wrong   { background: #450a0a; border-color: #ef4444; color: #ef4444; }
   .dir-btn.wrong .note { color: #b91c1c; }
 
+  /* ---- プレビューボタン ---- */
+  .preview-btn {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    color: #475569;
+    padding: 0.2rem 0.3rem;
+    border-radius: 0.3rem;
+    font-size: 0.7rem;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color 0.1s, border-color 0.1s;
+  }
+  .preview-btn:hover:not(:disabled) { color: #94a3b8; border-color: #334155; }
+  .preview-btn:disabled { opacity: 0.25; cursor: default; }
+
   /* ---- 履歴 ---- */
   .h-entry { font-size: 0.8rem; color: #94a3b8; display: flex; align-items: center; gap: 0.3rem; padding: 0.1rem 0; }
   .h-entry b { color: #e2e8f0; font-family: monospace; }
@@ -124,7 +140,7 @@ import Layout from '../layouts/Layout.astro';
     pickRandom,
     resolveBaseMidi,
   } from '../lib/intervals';
-  import { playInterval } from '../lib/audio';
+  import { playInterval, playNote } from '../lib/audio';
 
   const QUIZ_INTERVALS = ALL_INTERVALS.filter(iv => iv.semitones > 0);
 
@@ -175,6 +191,16 @@ import Layout from '../layouts/Layout.astro';
     container.style.cssText = 'display:flex;flex-direction:column;gap:0.15rem';
     for (const iv of QUIZ_INTERVALS) {
       const signed = sign * iv.semitones;
+
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:0.15rem';
+
+      const previewBtn = document.createElement('button');
+      previewBtn.className = 'preview-btn';
+      previewBtn.textContent = '🔊';
+      previewBtn.title = `${sign === 1 ? '↑' : '↓'}${iv.semitones}半音を再生`;
+      previewBtn.addEventListener('click', () => onPreview(signed));
+
       const btn = document.createElement('button');
       btn.className = 'dir-btn';
       btn.dataset.semitones = String(signed);
@@ -184,7 +210,10 @@ import Layout from '../layouts/Layout.astro';
         `<span class="semi">${iv.semitones}</span>` +
         `<span class="note"></span>`;
       btn.addEventListener('click', () => onAnswer(signed));
-      container.appendChild(btn);
+
+      row.appendChild(previewBtn);
+      row.appendChild(btn);
+      container.appendChild(row);
     }
   }
 
@@ -197,6 +226,22 @@ import Layout from '../layouts/Layout.astro';
       const noteEl = btn.querySelector<HTMLSpanElement>('.note');
       if (noteEl) noteEl.textContent = midiToNoteName(baseMidi + signed);
     }
+  }
+
+  function allPreviewButtons(): HTMLButtonElement[] {
+    return [
+      ...upAnswers.querySelectorAll<HTMLButtonElement>('.preview-btn'),
+      ...downAnswers.querySelectorAll<HTMLButtonElement>('.preview-btn'),
+    ];
+  }
+
+  function setPreviewButtonsDisabled(disabled: boolean): void {
+    for (const btn of allPreviewButtons()) btn.disabled = disabled;
+  }
+
+  async function onPreview(signed: number): Promise<void> {
+    if (isPlaying) return;
+    await playNote(currentBaseMidi + signed);
   }
 
   function allButtons(): HTMLButtonElement[] {
@@ -225,6 +270,7 @@ import Layout from '../layouts/Layout.astro';
     playBtn.disabled = true;
     replayBtn.disabled = true;
     setAnswerButtonsDisabled(true);
+    setPreviewButtonsDisabled(true);
     statusEl.textContent = '再生中...';
     statusEl.className = 'status playing text-sm text-center';
 
@@ -234,6 +280,7 @@ import Layout from '../layouts/Layout.astro';
     statusEl.textContent = '上行？下行？セミトーン数は？';
     statusEl.className = 'status listening text-sm text-center';
     setAnswerButtonsDisabled(false);
+    setPreviewButtonsDisabled(false);
     replayBtn.disabled = false;
   }
 
