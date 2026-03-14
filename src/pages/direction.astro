@@ -5,18 +5,9 @@ import Layout from '../layouts/Layout.astro';
   <header class="flex justify-between items-center">
     <h1 class="text-xl font-bold">音程方向クイズ</h1>
     <div class="flex items-center gap-4">
-      <button id="copyBtn" disabled
-        class="text-xs bg-slate-700 text-slate-400 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-default">
-        📋 コピー
-      </button>
-      <button id="downloadBtn" disabled
-        class="text-xs bg-slate-700 text-slate-400 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-default">
-        ⬇ DL
-      </button>
-      <button id="csvBtn" disabled
-        class="text-xs bg-slate-700 text-slate-400 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-default">
-        ⬇ CSV
-      </button>
+      <button id="copyBtn" disabled class="export-btn">📋 MD コピー</button>
+      <button id="downloadBtn" disabled class="export-btn">⬇ MD DL</button>
+      <button id="csvBtn" class="export-btn">⬇ CSV DL</button>
       <div class="text-sm text-slate-400 text-right leading-snug">
         <span class="text-lg font-bold text-slate-200">
           <span id="correct">0</span> / <span id="total">0</span>
@@ -95,6 +86,26 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <style is:global>
+  /* ---- エクスポートボタン ---- */
+  .export-btn {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #38bdf8;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    font-family: inherit;
+  }
+  .export-btn:hover:not(:disabled) { background: #1e3a5f; border-color: #38bdf8; }
+  .export-btn:disabled {
+    background: #1e293b;
+    color: #334155;
+    border-color: #1e293b;
+    cursor: default;
+  }
+
   /* ---- 回答ボタン ---- */
   .dir-btn {
     background: #1e293b;
@@ -343,7 +354,7 @@ import Layout from '../layouts/Layout.astro';
   // ---- 解析：記録 ----
   function recordAnswer(correctSt: number, answeredSt: number, ok: boolean): void {
     history.push({ correctSt, answeredSt, ok, baseMidi: currentBaseMidi });
-    if (history.length === 1) { copyBtn.disabled = false; downloadBtn.disabled = false; csvBtn.disabled = false; }
+    if (history.length === 1) { copyBtn.disabled = false; downloadBtn.disabled = false; }
 
     const answeredAt = Date.now();
     saveRecord({
