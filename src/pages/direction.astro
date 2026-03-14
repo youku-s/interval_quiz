@@ -13,6 +13,10 @@ import Layout from '../layouts/Layout.astro';
         class="text-xs bg-slate-700 text-slate-400 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-default">
         ⬇ DL
       </button>
+      <button id="csvBtn" disabled
+        class="text-xs bg-slate-700 text-slate-400 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-default">
+        ⬇ CSV
+      </button>
       <div class="text-sm text-slate-400 text-right leading-snug">
         <span class="text-lg font-bold text-slate-200">
           <span id="correct">0</span> / <span id="total">0</span>
@@ -159,6 +163,35 @@ import Layout from '../layouts/Layout.astro';
   let correct    = 0;
   let total      = 0;
 
+  // ---- localStorage スキーマ ----
+  interface QuizRecord {
+    schemaVersion: 1;
+    id: string;
+    sessionId: string;
+    playedAt: number;       // 初回再生 epoch ms
+    lastPlayedAt: number;   // 最後の再生 epoch ms
+    answeredAt: number;     // 回答 epoch ms
+    responseTimeMs: number; // lastPlayedAt → answeredAt
+    replayCount: number;
+    baseMidi: number;
+    baseNote: string;       // ルート音名 e.g. "C4"
+    directionMode: string;  // "random" | "up" | "down"
+    correctSt: number;
+    answeredSt: number;
+    ok: boolean;
+  }
+  const STORAGE_KEY = 'interval_quiz_records_v1';
+  const sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+  function loadRecords(): QuizRecord[] {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]'); } catch { return []; }
+  }
+  function saveRecord(rec: QuizRecord): void {
+    const all = loadRecords();
+    all.push(rec);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  }
+
   // ---- 解析状態（セッション中のみ） ----
   type HistoryEntry = { correctSt: number; answeredSt: number; ok: boolean; baseMidi: number };
   const history: HistoryEntry[] = [];
@@ -166,6 +199,11 @@ import Layout from '../layouts/Layout.astro';
   const statMap = new Map<number, { ok: number; total: number }>();
   // "correctSt→answeredSt" → count
   const confusions = new Map<string, number>();
+
+  // ---- タイミング追跡 ----
+  let currentPlayedAt    = 0;
+  let currentLastPlayedAt = 0;
+  let currentReplayCount = 0;
 
   // ---- DOM参照 ----
   const playBtn        = document.getElementById('playBtn')        as HTMLButtonElement;
@@ -175,6 +213,7 @@ import Layout from '../layouts/Layout.astro';
   const totalEl        = document.getElementById('total')          as HTMLSpanElement;
   const copyBtn           = document.getElementById('copyBtn')           as HTMLButtonElement;
   const downloadBtn       = document.getElementById('downloadBtn')       as HTMLButtonElement;
+  const csvBtn            = document.getElementById('csvBtn')            as HTMLButtonElement;
   const baseNoteSelect    = document.getElementById('baseNoteSelect')    as HTMLSelectElement;
   const directionSelect   = document.getElementById('directionSelect')   as HTMLSelectElement;
   const upAnswers      = document.getElementById('up-answers')     as HTMLDivElement;
@@ -240,6 +279,7 @@ import Layout from '../layouts/Layout.astro';
 
   // ---- 再生 ----
   async function play(semitones: number, baseMidi: number): Promise<void> {
+    currentLastPlayedAt = Date.now();
     isPlaying = true;
     playBtn.disabled = true;
     replayBtn.disabled = true;
@@ -259,6 +299,8 @@ import Layout from '../layouts/Layout.astro';
   async function newQuestion(): Promise<void> {
     answered = false;
     resetAnswerButtons();
+    currentPlayedAt = Date.now();
+    currentReplayCount = 0;
 
     const dirMode = directionSelect.value;
     const direction: 1 | -1 = dirMode === 'up' ? 1 : dirMode === 'down' ? -1 : (Math.random() < 0.5 ? 1 : -1);
@@ -301,7 +343,25 @@ import Layout from '../layouts/Layout.astro';
   // ---- 解析：記録 ----
   function recordAnswer(correctSt: number, answeredSt: number, ok: boolean): void {
     history.push({ correctSt, answeredSt, ok, baseMidi: currentBaseMidi });
-    if (history.length === 1) { copyBtn.disabled = false; downloadBtn.disabled = false; }
+    if (history.length === 1) { copyBtn.disabled = false; downloadBtn.disabled = false; csvBtn.disabled = false; }
+
+    const answeredAt = Date.now();
+    saveRecord({
+      schemaVersion: 1,
+      id: answeredAt.toString(36) + Math.random().toString(36).slice(2, 6),
+      sessionId,
+      playedAt: currentPlayedAt,
+      lastPlayedAt: currentLastPlayedAt,
+      answeredAt,
+      responseTimeMs: answeredAt - currentLastPlayedAt,
+      replayCount: currentReplayCount,
+      baseMidi: currentBaseMidi,
+      baseNote: midiToNoteName(currentBaseMidi),
+      directionMode: directionSelect.value,
+      correctSt,
+      answeredSt,
+      ok,
+    });
 
     const s = statMap.get(correctSt) ?? { ok: 0, total: 0 };
     s.total++;
@@ -551,6 +611,26 @@ import Layout from '../layouts/Layout.astro';
     URL.revokeObjectURL(url);
   });
 
+  // ---- CSV エクスポート ----
+  function generateCsv(): string {
+    const header = 'id,sessionId,playedAt,lastPlayedAt,answeredAt,responseTimeMs,replayCount,baseMidi,baseNote,directionMode,correctSt,answeredSt,ok';
+    const rows = loadRecords().map(r =>
+      [r.id, r.sessionId, r.playedAt, r.lastPlayedAt, r.answeredAt, r.responseTimeMs,
+       r.replayCount, r.baseMidi, `"${r.baseNote}"`, r.directionMode, r.correctSt, r.answeredSt, r.ok].join(',')
+    );
+    return [header, ...rows].join('\n');
+  }
+
+  csvBtn.addEventListener('click', () => {
+    const blob = new Blob([generateCsv()], { type: 'text/csv;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `interval-quiz-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
   // ---- 初期表示 ----
   renderStats();
 
@@ -558,6 +638,7 @@ import Layout from '../layouts/Layout.astro';
   replayBtn.addEventListener('click', () => {
     if (isPlaying) return;
     answered = false;
+    currentReplayCount++;
     resetAnswerButtons();
     play(currentSemitones, currentBaseMidi);
   });
