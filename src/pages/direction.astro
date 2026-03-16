@@ -92,6 +92,7 @@ import Layout from '../layouts/Layout.astro';
     <div id="chart-legend" style="display:none" class="flex gap-3 mt-1.5 text-xs text-slate-500">
       <span><span style="color:#16a34a">●</span> 正解</span>
       <span><span style="color:#ef4444">●</span> 誤答</span>
+      <span><span style="color:#eab308">●</span> わからない</span>
     </div>
   </section>
 </Layout>
@@ -598,7 +599,10 @@ import Layout from '../layouts/Layout.astro';
       const x = xOf(i);
       c.fillStyle = '#16a34a';
       c.beginPath(); c.arc(x, yOf(e.correctSt), 3, 0, Math.PI * 2); c.fill();
-      if (!e.ok && e.answeredSt !== null) {
+      if (e.unknown) {
+        c.fillStyle = '#eab308';
+        c.beginPath(); c.arc(x, yOf(e.correctSt), 4, 0, Math.PI * 2); c.fill();
+      } else if (!e.ok && e.answeredSt !== null) {
         c.fillStyle = '#ef4444';
         c.beginPath(); c.arc(x, yOf(e.answeredSt), 3, 0, Math.PI * 2); c.fill();
       }
