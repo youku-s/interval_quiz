@@ -34,8 +34,10 @@ import Layout from '../layouts/Layout.astro';
         </label>
         <label class="flex items-center gap-2 text-sm text-slate-400">
           範囲
-          <span class="text-xs text-slate-500">0 〜</span>
-          <input id="rangeMax" type="number" min="1" max="12" value="12"
+          <input id="rangeMin" type="number" min="0" max="12" value="0"
+            class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-1.5 py-1 text-sm w-12 text-center">
+          <span class="text-xs text-slate-500">〜</span>
+          <input id="rangeMax" type="number" min="0" max="12" value="12"
             class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-1.5 py-1 text-sm w-12 text-center">
           <span class="text-xs text-slate-500">st</span>
         </label>
@@ -238,8 +240,8 @@ import Layout from '../layouts/Layout.astro';
   // "correctSt→answeredSt" → count
   const confusions = new Map<string, number>();
 
-  // ---- 出題範囲（rangeMin は常に 0 = 同音込み） ----
-  const rangeMin = 0;
+  // ---- 出題範囲 ----
+  let rangeMin = 0;
   let rangeMax = 12;
 
   // ---- タイミング追跡 ----
@@ -266,6 +268,7 @@ import Layout from '../layouts/Layout.astro';
   const unisonAnswer   = document.getElementById('unison-answer')  as HTMLDivElement;
   const upHeader       = document.getElementById('up-header')      as HTMLDivElement;
   const downHeader     = document.getElementById('down-header')    as HTMLDivElement;
+  const rangeMinInput  = document.getElementById('rangeMin')       as HTMLInputElement;
   const rangeMaxInput  = document.getElementById('rangeMax')       as HTMLInputElement;
 
   for (const opt of BASE_NOTE_OPTIONS) {
@@ -316,9 +319,8 @@ import Layout from '../layouts/Layout.astro';
   makeUnisonButton();
 
   // ---- 出題範囲フィルタ ----
-  function getActiveIntervals(): typeof QUIZ_INTERVALS[0][] {
-    const ranged = QUIZ_INTERVALS.filter(iv => iv.semitones >= rangeMin && iv.semitones <= rangeMax);
-    return [UNISON_IV, ...ranged];
+  function getActiveIntervals(): typeof ALL_INTERVALS[0][] {
+    return ALL_INTERVALS.filter(iv => iv.semitones >= rangeMin && iv.semitones <= rangeMax);
   }
 
   function updateButtonNotes(baseMidi: number): void {
@@ -340,11 +342,11 @@ import Layout from '../layouts/Layout.astro';
 
   function isButtonConstrained(btn: HTMLButtonElement): boolean {
     const signed = Number(btn.dataset.semitones);
-    if (signed === 0) return false; // 同音は常に有効
     const abs = Math.abs(signed);
     const dirMode = directionSelect.value;
     const inRange = abs >= rangeMin && abs <= rangeMax;
-    const dirOk   = dirMode === 'random'
+    const dirOk   = signed === 0
+      || dirMode === 'random'
       || (dirMode === 'up'   && signed > 0)
       || (dirMode === 'down' && signed < 0);
     return !inRange || !dirOk;
@@ -767,9 +769,14 @@ import Layout from '../layouts/Layout.astro';
   directionSelect.addEventListener('change', updateButtonConstraints);
 
   function onRangeChange(): void {
-    rangeMax = Math.max(1, Math.min(12, Number(rangeMaxInput.value) || 12));
+    const rawMin = Math.max(0, Math.min(12, Number(rangeMinInput.value) || 0));
+    const rawMax = Math.max(0, Math.min(12, Number(rangeMaxInput.value) || 12));
+    rangeMin = Math.min(rawMin, rawMax);
+    rangeMax = Math.max(rawMin, rawMax);
+    rangeMinInput.value = String(rangeMin);
     rangeMaxInput.value = String(rangeMax);
     updateButtonConstraints();
   }
+  rangeMinInput.addEventListener('change', onRangeChange);
   rangeMaxInput.addEventListener('change', onRangeChange);
 </script>
