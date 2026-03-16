@@ -61,6 +61,7 @@ import Layout from '../layouts/Layout.astro';
         </div>
       </div>
       <div id="unison-answer" class="mt-1"></div>
+      <button id="unknownBtn" disabled class="skip-btn mt-1">❓ わからない</button>
     </div>
 
     <!-- 右カラム：成績 + 診断 -->
@@ -115,6 +116,22 @@ import Layout from '../layouts/Layout.astro';
     border-color: #1e293b;
     cursor: default;
   }
+
+  /* ---- わからないボタン ---- */
+  .skip-btn {
+    background: #1c1917;
+    border: 1px solid #44403c;
+    color: #a8a29e;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.3rem;
+    font-size: 0.85rem;
+    font-family: inherit;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .skip-btn:hover:not(:disabled) { background: #292524; border-color: #78716c; }
+  .skip-btn:disabled { opacity: 0.3; cursor: default; }
 
   /* ---- 回答ボタン ---- */
   .dir-btn {
@@ -195,7 +212,7 @@ import Layout from '../layouts/Layout.astro';
 
   // ---- localStorage スキーマ ----
   interface QuizRecord {
-    schemaVersion: 2;
+    schemaVersion: 3;
     id: string;
     sessionId: string;
     playedAt: number;       // 初回再生 epoch ms
@@ -209,8 +226,9 @@ import Layout from '../layouts/Layout.astro';
     rangeMin: number;       // 出題範囲 最小 semitone
     rangeMax: number;       // 出題範囲 最大 semitone
     correctSt: number;
-    answeredSt: number;
+    answeredSt: number | null; // 「わからない」の場合 null
     ok: boolean;
+    unknown: boolean;       // 「わからない」を選択した場合 true
   }
   const STORAGE_KEY = 'interval_quiz_records_v1';
   const sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -218,9 +236,12 @@ import Layout from '../layouts/Layout.astro';
   function loadRecords(): QuizRecord[] {
     try {
       const raw: any[] = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
-      return raw.map(r => r.schemaVersion === 1
-        ? { ...r, schemaVersion: 2, rangeMin: 0, rangeMax: 12 } as QuizRecord
-        : r as QuizRecord);
+      return raw.map(r => {
+        let rec = r;
+        if (rec.schemaVersion === 1) rec = { ...rec, schemaVersion: 2, rangeMin: 0, rangeMax: 12 };
+        if (rec.schemaVersion === 2) rec = { ...rec, schemaVersion: 3, unknown: false };
+        return rec as QuizRecord;
+      });
     } catch { return []; }
   }
   function saveRecord(rec: QuizRecord): void {
@@ -231,7 +252,7 @@ import Layout from '../layouts/Layout.astro';
 
   // ---- 解析状態（セッション中のみ） ----
   type HistoryEntry = {
-    correctSt: number; answeredSt: number; ok: boolean;
+    correctSt: number; answeredSt: number | null; ok: boolean; unknown: boolean;
     baseMidi: number; directionMode: string; rangeMax: number;
   };
   const history: HistoryEntry[] = [];
@@ -270,6 +291,7 @@ import Layout from '../layouts/Layout.astro';
   const downHeader     = document.getElementById('down-header')    as HTMLDivElement;
   const rangeMinInput  = document.getElementById('rangeMin')       as HTMLInputElement;
   const rangeMaxInput  = document.getElementById('rangeMax')       as HTMLInputElement;
+  const unknownBtn     = document.getElementById('unknownBtn')     as HTMLButtonElement;
 
   for (const opt of BASE_NOTE_OPTIONS) {
     const el = document.createElement('option');
@@ -361,6 +383,7 @@ import Layout from '../layouts/Layout.astro';
   function setAnswerButtonsDisabled(disabled: boolean): void {
     answersEnabled = !disabled;
     applyButtonDisabledState();
+    unknownBtn.disabled = disabled;
   }
 
   function updateButtonConstraints(): void {
@@ -449,17 +472,39 @@ import Layout from '../layouts/Layout.astro';
     statusEl.className   = 'status text-sm text-slate-400 text-center';
     playBtn.disabled = false;
 
-    recordAnswer(currentSemitones, selected, isCorrect);
+    recordAnswer(currentSemitones, selected, isCorrect, false);
+  }
+
+  function onUnknown(): void {
+    if (answered || isPlaying) return;
+
+    answered = true;
+    total++;
+    setAnswerButtonsDisabled(true);
+    replayBtn.disabled = true;
+
+    correctEl.textContent = String(correct);
+    totalEl.textContent   = String(total);
+
+    for (const btn of allButtons()) {
+      if (Number(btn.dataset.semitones) === currentSemitones) btn.classList.add('correct');
+    }
+
+    statusEl.textContent = '「再生」を押して次の問題へ';
+    statusEl.className   = 'status text-sm text-slate-400 text-center';
+    playBtn.disabled = false;
+
+    recordAnswer(currentSemitones, null, false, true);
   }
 
   // ---- 解析：記録 ----
-  function recordAnswer(correctSt: number, answeredSt: number, ok: boolean): void {
-    history.push({ correctSt, answeredSt, ok, baseMidi: currentBaseMidi, directionMode: directionSelect.value, rangeMax });
+  function recordAnswer(correctSt: number, answeredSt: number | null, ok: boolean, unknown: boolean): void {
+    history.push({ correctSt, answeredSt, ok, unknown, baseMidi: currentBaseMidi, directionMode: directionSelect.value, rangeMax });
     if (history.length === 1) { copyBtn.disabled = false; downloadBtn.disabled = false; }
 
     const answeredAt = Date.now();
     saveRecord({
-      schemaVersion: 2,
+      schemaVersion: 3,
       id: answeredAt.toString(36) + Math.random().toString(36).slice(2, 6),
       sessionId,
       playedAt: currentPlayedAt,
@@ -475,6 +520,7 @@ import Layout from '../layouts/Layout.astro';
       correctSt,
       answeredSt,
       ok,
+      unknown,
     });
 
     const s = statMap.get(correctSt) ?? { ok: 0, total: 0 };
@@ -482,7 +528,7 @@ import Layout from '../layouts/Layout.astro';
     if (ok) s.ok++;
     statMap.set(correctSt, s);
 
-    if (!ok) {
+    if (!ok && !unknown) {
       const key = `${correctSt}→${answeredSt}`;
       confusions.set(key, (confusions.get(key) ?? 0) + 1);
     }
@@ -540,7 +586,7 @@ import Layout from '../layouts/Layout.astro';
 
     // 誤答の縦の差分線
     entries.forEach((e, i) => {
-      if (!e.ok) {
+      if (!e.ok && e.answeredSt !== null) {
         c.strokeStyle = '#4b5563'; c.lineWidth = 1; c.setLineDash([2, 2]);
         c.beginPath(); c.moveTo(xOf(i), yOf(e.correctSt)); c.lineTo(xOf(i), yOf(e.answeredSt)); c.stroke();
         c.setLineDash([]);
@@ -552,7 +598,7 @@ import Layout from '../layouts/Layout.astro';
       const x = xOf(i);
       c.fillStyle = '#16a34a';
       c.beginPath(); c.arc(x, yOf(e.correctSt), 3, 0, Math.PI * 2); c.fill();
-      if (!e.ok) {
+      if (!e.ok && e.answeredSt !== null) {
         c.fillStyle = '#ef4444';
         c.beginPath(); c.arc(x, yOf(e.answeredSt), 3, 0, Math.PI * 2); c.fill();
       }
@@ -689,7 +735,7 @@ import Layout from '../layouts/Layout.astro';
         const dir  = e.correctSt > 0 ? '↑' : e.correctSt < 0 ? '↓' : '→';
         const iv   = ALL_INTERVALS.find(v => v.semitones === abs) ?? UNISON_IV;
         const note = midiToNoteName(e.baseMidi + e.correctSt);
-        const ans  = e.ok ? '−' : (() => {
+        const ans  = e.ok ? '−' : (e.unknown || e.answeredSt === null) ? '❓' : (() => {
           const aabs  = Math.abs(e.answeredSt);
           const adir  = e.answeredSt > 0 ? '↑' : e.answeredSt < 0 ? '↓' : '→';
           const anote = midiToNoteName(e.baseMidi + e.answeredSt);
@@ -734,11 +780,11 @@ import Layout from '../layouts/Layout.astro';
 
   // ---- CSV エクスポート ----
   function generateCsv(): string {
-    const header = 'id,sessionId,playedAt,lastPlayedAt,answeredAt,responseTimeMs,replayCount,baseMidi,baseNote,directionMode,rangeMin,rangeMax,correctSt,answeredSt,ok';
+    const header = 'id,sessionId,playedAt,lastPlayedAt,answeredAt,responseTimeMs,replayCount,baseMidi,baseNote,directionMode,rangeMin,rangeMax,correctSt,answeredSt,ok,unknown';
     const rows = loadRecords().map(r =>
       [r.id, r.sessionId, r.playedAt, r.lastPlayedAt, r.answeredAt, r.responseTimeMs,
        r.replayCount, r.baseMidi, `"${r.baseNote}"`, r.directionMode,
-       r.rangeMin, r.rangeMax, r.correctSt, r.answeredSt, r.ok].join(',')
+       r.rangeMin, r.rangeMax, r.correctSt, r.answeredSt ?? '', r.ok, r.unknown].join(',')
     );
     return [header, ...rows].join('\n');
   }
@@ -766,6 +812,7 @@ import Layout from '../layouts/Layout.astro';
     play(currentSemitones, currentBaseMidi);
   });
 
+  unknownBtn.addEventListener('click', onUnknown);
   directionSelect.addEventListener('change', updateButtonConstraints);
 
   function onRangeChange(): void {
